@@ -29,12 +29,7 @@ export function UnitSwitcher({ active, onChange }: { active: UnitKey; onChange: 
               on ? acc.on : "border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10"
             }`}
           >
-            {u.key === "picu" ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src="/images/picu-icon.png" alt="" width={16} height={16} className="h-4 w-4 rounded-sm" />
-            ) : (
-              <span>{u.emoji}</span>
-            )}
+            <span>{u.emoji}</span>
             {u.short}
           </button>
         );
