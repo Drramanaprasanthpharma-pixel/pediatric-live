@@ -40,7 +40,7 @@ export const UNITS: Record<UnitKey, UnitDef> = {
     code: "PICU",
     name: "Paediatric Intensive Care Unit",
     short: "PICU",
-    emoji: " ❤️",
+    emoji: "❤️",
     color: "rose",
     levels: ["PICU Level II", "PICU Level III", "Cardiac ICU (CVICU)"],
     bedZones: [{ label: "PICU beds", beds: R(1, 6, "PICU") }],
