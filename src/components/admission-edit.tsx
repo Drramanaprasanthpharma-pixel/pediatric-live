@@ -35,6 +35,7 @@ export type AdmissionFields = {
   apgar1: number;
   apgar5: number;
   bloodGroup: string;
+  motherBloodGroup?: string;
   inborn: boolean;
   isolation: string;
   consultant: string;
@@ -84,6 +85,7 @@ export function AdmissionEdit({
       apgar1: f.apgar1,
       apgar5: f.apgar5,
       bloodGroup: f.bloodGroup,
+      motherBloodGroup: f.motherBloodGroup ?? "Unknown",
       inborn: f.inborn,
       isolation: f.isolation,
       consultant: f.consultant,
@@ -125,7 +127,10 @@ export function AdmissionEdit({
           <Row k={isPostnatal ? "Mother" : isNicu ? "Mother" : "Guardian"} v={f.motherName || "—"} />
           <Row k="Bed" v={f.bed} />
           <Row k="Sex" v={f.sex} />
-          <Row k="Blood group" v={f.bloodGroup} />
+          <Row k="Blood group (baby)" v={f.bloodGroup} />
+          {(baby.unit === "nicu" || baby.unit === "postnatal") && (
+            <Row k="Mother's blood group" v={f.motherBloodGroup || "Unknown"} />
+          )}
           {isNicu && <Row k="Gestation" v={`${f.gestWeeks}+${f.gestDays} wk`} />}
           {isNicu && <Row k="Birth weight" v={`${f.birthWeight} g`} />}
           {isNicu && <Row k="Apgar" v={`${f.apgar1} / ${f.apgar5}`} />}
@@ -213,8 +218,19 @@ export function AdmissionEdit({
             </div>
           )}
 
-          <div className="lbl mb-1">Blood group</div>
+          <div className="lbl mb-1">{baby.unit === "postnatal" ? "Baby blood group" : "Blood group (baby)"}</div>
           <DialWithOther options={BLOOD} value={f.bloodGroup} onChange={(v: string) => v && set("bloodGroup")(v)} otherPlaceholder="Other blood group…" />
+          {(baby.unit === "nicu" || baby.unit === "postnatal") && (
+            <>
+              <div className="lbl mt-3 mb-1">Mother&apos;s blood group</div>
+              <DialWithOther
+                options={BLOOD}
+                value={f.motherBloodGroup ?? "Unknown"}
+                onChange={(v: string) => v && set("motherBloodGroup")(v)}
+                otherPlaceholder="Mother's blood group…"
+              />
+            </>
+          )}
 
           {isNicu && (
             <>

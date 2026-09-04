@@ -1,5 +1,8 @@
 "use client";
 
+import { AirVent, AlertTriangle, Bed, HeartPulse, Info, LayoutGrid, ListChecks, ListTodo, OctagonAlert, Siren, Wind } from "lucide-react";
+import { ActionChecklist } from "@/components/action-list";
+import { interpretVitals, type VitalsInput } from "@/lib/interpret";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BackupVault, DeleteConfirmModal, type DeletableBaby } from "@/components/backup-ui";
@@ -8,7 +11,7 @@ import { TopBar, usePoll, api, useTempUnit } from "@/components/ui";
 import { UnitBadge, UnitSwitcher } from "@/components/unit-ui";
 import { ACUITY_META } from "@/lib/catalog";
 import type { Clinical } from "@/lib/clinical";
-import { correctedGA, dayOfLife, relTime, tempOut, vitalFlag, weightChangePct } from "@/lib/clinical";
+import { correctedGA, dayOfLife, fmtBP, relTime, tempOut, vitalFlag, weightChangePct } from "@/lib/clinical";
 import { UNITS, UNIT_LIST, type UnitKey, unitOf } from "@/lib/units";
 
 type BoardBaby = {
@@ -40,15 +43,19 @@ type BoardBaby = {
 };
 
 export default function BoardClient() {
-  const [unit, setUnit] = useState<UnitKey>("nicu");
-  const { data, reload } = usePoll<{ babies: BoardBaby[] }>(`/api/board?unit=${unit}`, 4000);
+  const [unit, setUnit] = useState<UnitKey | "all">("nicu");
+  const isAll = unit === "all";
+  const { data, reload } = usePoll<{ babies: BoardBaby[] }>(
+    isAll ? `/api/board` : `/api/board?unit=${unit}`,
+    4000,
+  );
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [pending, setPending] = useState<DeletableBaby | null>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem("neo_unit") as UnitKey | null;
-    if (saved && saved in UNITS) setUnit(saved);
+    const saved = localStorage.getItem("neo_unit") as UnitKey | "all" | null;
+    if (saved && (saved === "all" || saved in UNITS)) setUnit(saved);
   }, []);
   useEffect(() => {
     localStorage.setItem("neo_unit", unit);
@@ -76,9 +83,20 @@ export default function BoardClient() {
     cpap: babies.filter((b) => /CPAP|HFNC|BiPAP|oxygen|nasal/i.test(b.clinical?.resp?.mode ?? "")).length,
     tasks: babies.reduce((n, b) => n + b.openTasks.length, 0),
   };
-  const u = unitOf(unit);
+  const u = unitOf(isAll ? "nicu" : unit);
+  const admitUnit: UnitKey = isAll ? "nicu" : unit;
   const admitLabel =
-    unit === "postnatal" ? "+ Admit mother & baby" : unit === "paeds" ? "+ Admit child" : "+ Admit patient";
+    isAll
+      ? "+ Admit patient"
+      : unit === "postnatal"
+        ? "+ Admit mother & baby"
+        : unit === "paeds"
+          ? "+ Admit child"
+          : "+ Admit patient";
+  const perUnitCounts = UNIT_LIST.map((ud) => ({
+    ...ud,
+    n: babies.filter((b) => b.unit === ud.key).length,
+  }));
 
   return (
     <main className="min-h-screen pb-20">
@@ -87,10 +105,19 @@ export default function BoardClient() {
         {/* Hero */}
         <section className="card mb-4 overflow-hidden p-0">
           <div className="flex flex-wrap items-center gap-4 bg-gradient-to-r from-cyan-500/10 via-indigo-500/10 to-fuchsia-500/10 px-5 py-4">
-            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-white/15 bg-white/5 p-1.5 shadow-lg">
-              {u.key === "picu" ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src="/images/picu-icon.png" alt="PICU" className="h-full w-full object-contain" />
+            <div
+              className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl border p-1.5 shadow-lg ${
+                isAll
+                  ? "border-indigo-400/40 bg-gradient-to-br from-indigo-500/25 to-fuchsia-600/15 text-indigo-100"
+                  : u.key === "picu"
+                    ? "border-rose-400/40 bg-gradient-to-br from-rose-500/25 to-red-600/15 text-rose-200"
+                    : "border-white/15 bg-white/5"
+              }`}
+            >
+              {isAll ? (
+                <LayoutGrid size={30} strokeWidth={2.2} aria-label="All units" />
+              ) : u.key === "picu" ? (
+                <HeartPulse size={32} strokeWidth={2.2} aria-label="PICU" />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src="/images/hospital-logo.svg" alt="" className="h-full w-full object-contain" />
@@ -103,28 +130,45 @@ export default function BoardClient() {
               <p className="text-[9px] font-semibold text-slate-400">
                 Realtime Monitoring and Clinical Handover Suite
               </p>
-              <h1 className="truncate text-lg font-black tracking-tight text-white">{u.name}</h1>
+              <h1 className="truncate text-lg font-black tracking-tight text-white">
+                {isAll ? "All units — combined view" : u.name}
+              </h1>
               <p className="text-[11px] text-slate-400">
-                {u.short} · {counts.total} patient{counts.total === 1 ? "" : "s"} · {counts.tasks} open action
-                {counts.tasks === 1 ? "" : "s"} · realtime cloud sync
+                {isAll ? "ALL" : u.short} · {counts.total} patient{counts.total === 1 ? "" : "s"} · {counts.tasks} open
+                action{counts.tasks === 1 ? "" : "s"} · realtime cloud sync
               </p>
             </div>
             <div className="ml-auto flex flex-wrap items-center gap-2">
               <Link href="/consultants" className="btn-ghost">
                 👨‍⚕️ By consultant
               </Link>
-              <Link href={`/handover?unit=${unit}`} className="btn-ghost">
-                🖨️ Print {u.short} sheet
+              <Link href={isAll ? "/handover" : `/handover?unit=${unit}`} className="btn-ghost">
+                🖨️ Print {isAll ? "unit" : u.short} sheet
               </Link>
-              <Link href={`/admit?unit=${unit}`} className="btn-primary">
+              <Link href={`/admit?unit=${admitUnit}`} className="btn-primary">
                 {admitLabel}
               </Link>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 border-t border-white/10 px-5 py-3">
             <span className="lbl">Switch unit</span>
-            <UnitSwitcher active={unit} onChange={setUnit} />
+            <UnitSwitcher active={unit} onChange={setUnit} includeAll />
           </div>
+          {isAll && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-white/10 px-5 py-2.5">
+              <span className="lbl">Per unit</span>
+              {perUnitCounts.map((ud) => (
+                <button
+                  key={ud.key}
+                  onClick={() => setUnit(ud.key)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] font-semibold text-slate-300 hover:bg-white/10"
+                >
+                  {ud.short}
+                  <span className="rounded bg-white/10 px-1 text-[10px] font-black text-white">{ud.n}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
         <div className="mb-4">
@@ -132,11 +176,11 @@ export default function BoardClient() {
         </div>
 
         <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
-          <Stat label="Patients" value={counts.total} icon="🛏️" />
-          <Stat label="Critical" value={counts.critical} icon="🚨" tone="text-rose-300" />
-          <Stat label="Ventilated" value={counts.vent} icon="🫁" tone="text-amber-300" />
-          <Stat label="NIV / O₂" value={counts.cpap} icon="💨" tone="text-cyan-300" />
-          <Stat label="Open actions" value={counts.tasks} icon="✅" tone="text-emerald-300" />
+          <Stat label="Patients" value={counts.total} icon={<Bed size={18} />} iconTone="text-sky-300" />
+          <Stat label="Critical" value={counts.critical} icon={<Siren size={18} />} iconTone="text-rose-300" tone="text-rose-300" />
+          <Stat label="Ventilated" value={counts.vent} icon={<AirVent size={19} />} iconTone="text-amber-300" tone="text-amber-300" />
+          <Stat label="NIV / O₂" value={counts.cpap} icon={<Wind size={18} />} iconTone="text-cyan-300" tone="text-cyan-300" />
+          <Stat label="Open actions" value={counts.tasks} icon={<ListChecks size={18} />} iconTone="text-emerald-300" tone="text-emerald-300" />
         </div>
 
         <div className="no-print mb-4 flex flex-wrap items-center gap-2">
@@ -160,13 +204,13 @@ export default function BoardClient() {
         {babies.length === 0 && (
           <div className="card p-10 text-center">
             <p className="text-slate-300">
-              No patients in {u.short} yet.
+              {isAll ? "No active patients in any unit yet." : `No patients in ${u.short} yet.`}
             </p>
             <div className="mt-4 flex justify-center gap-2">
-              <Link href={`/admit?unit=${unit}`} className="btn-primary">
+              <Link href={`/admit?unit=${admitUnit}`} className="btn-primary">
                 {admitLabel}
               </Link>
-              {unit === "nicu" && (
+              {(unit === "nicu" || isAll) && (
                 <button
                   onClick={async () => {
                     await api("/api/seed", "POST");
@@ -189,6 +233,7 @@ export default function BoardClient() {
               onDelete={() =>
                 setPending({ id: b.id, babyName: b.babyName, uhid: b.uhid, bed: b.bed, motherName: b.motherName })
               }
+              onActionToggled={reload}
             />
           ))}
         </div>
@@ -263,16 +308,18 @@ function Stat({
   value,
   tone = "text-white",
   icon,
+  iconTone = "text-slate-200",
 }: {
   label: string;
   value: number;
   tone?: string;
-  icon?: string;
+  icon?: React.ReactNode;
+  iconTone?: string;
 }) {
   return (
     <div className="card flex items-center gap-3 px-4 py-3.5">
       {icon && (
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-base">
+        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 ${iconTone}`}>
           {icon}
         </span>
       )}
@@ -284,7 +331,15 @@ function Stat({
   );
 }
 
-function BabyCard({ b, onDelete }: { b: BoardBaby; onDelete: () => void }) {
+function BabyCard({
+  b,
+  onDelete,
+  onActionToggled,
+}: {
+  b: BoardBaby;
+  onDelete: () => void;
+  onActionToggled?: () => void;
+}) {
   const meta = ACUITY_META[b.acuity] ?? ACUITY_META.stable;
   const { unit } = useTempUnit();
   const v = b.lastVital;
@@ -345,9 +400,34 @@ function BabyCard({ b, onDelete }: { b: BoardBaby; onDelete: () => void }) {
             k="temp"
             rawC={v?.temp as number | null}
           />
-          <Mini label="MAP" v={v?.map} k="map" />
+          <Mini label="BP" v={fmtBP(v?.sbp, v?.dbp, v?.map)} k="map" rawC={v?.map as number | null} />
           <Mini label="RBS" v={v?.rbs} k="rbs" />
         </div>
+
+        {(() => {
+          const flags = interpretVitals(b, (v ?? {}) as unknown as VitalsInput).slice(0, 3);
+          if (!flags.length) return null;
+          return (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {flags.map((fl, i) => (
+                <span
+                  key={`${fl.key}-${i}`}
+                  title={fl.note}
+                  className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[9px] font-bold ${
+                    fl.sev === "crit"
+                      ? "border-rose-400/50 bg-rose-500/15 text-rose-200"
+                      : fl.sev === "warn"
+                        ? "border-amber-400/40 bg-amber-400/10 text-amber-200"
+                        : "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+                  }`}
+                >
+                  {fl.sev === "crit" ? <OctagonAlert size={10} /> : fl.sev === "warn" ? <AlertTriangle size={10} /> : <Info size={10} />}
+                  {fl.label}
+                </span>
+              ))}
+            </div>
+          );
+        })()}
 
         <div className="mt-3 flex flex-wrap gap-1.5 text-[10px]">
           <Tag tone="cyan">
@@ -383,19 +463,27 @@ function BabyCard({ b, onDelete }: { b: BoardBaby; onDelete: () => void }) {
             <span className="text-[10px] text-slate-400">+{b.problems.length - 6} more</span>
           )}
         </div>
+      </Link>
 
-        {b.openTasks.length > 0 && (
-          <div className="mt-3 rounded-xl border border-white/10 bg-slate-900/40 p-2">
-            <div className="lbl mb-1">Open actions ({b.openTasks.length})</div>
-            <ul className="space-y-0.5 text-[11px] text-slate-300">
-              {b.openTasks.slice(0, 3).map((t) => (
-                <li key={t.id}>• {t.text}</li>
-              ))}
-            </ul>
+      {b.openTasks.length > 0 && (
+        <div className="mx-4 mb-3 rounded-xl border border-white/10 bg-slate-900/40 p-2">
+          <div className="lbl mb-1 flex items-center gap-1">
+            <ListTodo size={12} /> Open actions ({b.openTasks.length})
           </div>
-        )}
+          <ActionChecklist
+            tasks={b.openTasks.map((t) => ({ ...t, done: false, doneAt: null, doneBy: "" }))}
+            showDone={false}
+            emptyLabel=""
+            onToggle={async (id, done) => {
+              await api(`/api/babies/${b.id}/tasks`, "PATCH", { id, done, doneBy: "Board" });
+              onActionToggled?.();
+            }}
+          />
+        </div>
+      )}
 
-        <div className="mt-3 flex items-center justify-between text-[10px] text-slate-500">
+      <Link href={`/baby/${b.id}`} className="block px-4 pb-3">
+        <div className="flex items-center justify-between text-[10px] text-slate-500">
           <span>Primary Consultant: {b.consultant || "—"}</span>
           <span>
             {b.lastHandover
@@ -421,19 +509,22 @@ function Mini({
   unit?: string;
   rawC?: number | null;
 }) {
-  const num = typeof v === "string" ? Number(v) : v;
-  const flag = vitalFlag(k, (rawC ?? num) ?? undefined);
+  const isText = typeof v === "string";
+  const num = isText ? Number(v) : v;
+  const flagBasis = rawC ?? (isText ? undefined : (num as number | null | undefined));
+  const flag = vitalFlag(k, flagBasis ?? undefined);
   const cls =
     flag === "bad"
       ? "text-rose-300 border-rose-400/40"
       : flag === "warn"
         ? "text-amber-300 border-amber-400/40"
         : "text-slate-100 border-white/10";
+  const display = isText ? (v as string) : (num ?? "—");
   return (
     <div className={`rounded-lg border bg-slate-900/50 px-1.5 py-1 text-center ${cls}`}>
       <div className="text-[9px] uppercase tracking-wide text-slate-400">{label}</div>
       <div className="text-sm font-bold tabular-nums">
-        {num ?? "—"}
+        {display}
         <span className="text-[9px]">{unit}</span>
       </div>
     </div>

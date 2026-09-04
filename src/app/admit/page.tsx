@@ -15,9 +15,19 @@ import {
   useUser,
 } from "@/components/ui";
 import { UnitBedDial, SubSpecialtyPicker, UnitSwitcher } from "@/components/unit-ui";
+import { AdmissionTriage } from "@/components/triage";
+type TriageState = {
+  scale: string;
+  band: string;
+  score: number;
+  label: string;
+  advice: string;
+  appliedAt: string;
+};
 import { PROBLEM_CATALOG, RESP_MODES, SYSTEMS, type SystemKey } from "@/lib/catalog";
 import { UNITS, UNIT_LIST, defaultBed, unitOf, type UnitKey } from "@/lib/units";
 import { systemOfDiagnosis, systemsForUnit, UNIT_CATALOGS } from "@/lib/units-catalog";
+import { fentonBand } from "@/lib/interpret";
 
 const ANTENATAL = [
   "Antenatal steroids complete",
@@ -146,6 +156,8 @@ function AdmitForm() {
     apgar1: 8,
     apgar5: 9,
     bloodGroup: "Unknown",
+    motherBloodGroup: "Unknown",
+    triage: null as TriageState | null,
     inborn: true,
     acuity: "stable",
     consultant: "",
@@ -205,6 +217,8 @@ function AdmitForm() {
       apgar1: f.apgar1,
       apgar5: f.apgar5,
       bloodGroup: f.bloodGroup,
+      motherBloodGroup:
+        unit === "nicu" || unit === "postnatal" ? f.motherBloodGroup : "Unknown",
       inborn: f.inborn,
       acuity: f.acuity,
       consultant: f.consultant,
@@ -229,6 +243,7 @@ function AdmitForm() {
         lines: [],
         drugs: unit === "nicu" ? [{ name: "Vitamin K" }] : [],
         care: [],
+        triage: f.triage ?? undefined,
       },
     };
     const res = (await api("/api/babies", "POST", payload)) as { baby?: { id?: number } } | undefined;
@@ -296,8 +311,45 @@ function AdmitForm() {
                 <ChipGroup options={["Inborn", "Outborn"]} value={f.inborn ? "Inborn" : "Outborn"} onChange={(v: string) => set("inborn")(v === "Inborn")} />
               </>
             )}
-            <div className="lbl mt-3 mb-1">Blood group</div>
-            <DialWithOther options={["O+", "O−", "A+", "A−", "B+", "B−", "AB+", "AB−", "Unknown"]} value={f.bloodGroup} onChange={(v: string) => v && set("bloodGroup")(v)} otherPlaceholder="Other blood group…" />
+            <div className="lbl mt-3 mb-1">
+              {unit === "postnatal" ? "Baby blood group" : "Blood group"}
+            </div>
+            <DialWithOther
+              options={["O+", "O−", "A+", "A−", "B+", "B−", "AB+", "AB−", "Unknown"]}
+              value={f.bloodGroup}
+              onChange={(v: string) => v && set("bloodGroup")(v)}
+              otherPlaceholder="Other blood group…"
+            />
+
+            {(unit === "nicu" || unit === "postnatal") && (
+              <>
+                <div className="lbl mt-3 mb-1">Mother&apos;s blood group</div>
+                <DialWithOther
+                  options={["O+", "O−", "A+", "A−", "B+", "B−", "AB+", "AB−", "Unknown"]}
+                  value={f.motherBloodGroup}
+                  onChange={(v: string) => v && set("motherBloodGroup")(v)}
+                  otherPlaceholder="Mother's blood group…"
+                />
+                {f.bloodGroup !== "Unknown" &&
+                  f.motherBloodGroup !== "Unknown" &&
+                  (() => {
+                    const mother = f.motherBloodGroup;
+                    const baby = f.bloodGroup;
+                    const rhRisk = mother.endsWith("−") && baby.endsWith("+");
+                    const aboRisk =
+                      mother.startsWith("O") &&
+                      (baby.startsWith("A") || baby.startsWith("B") || baby.startsWith("AB"));
+                    if (!rhRisk && !aboRisk) return null;
+                    return (
+                      <p className="mt-1 rounded-md border border-amber-400/40 bg-amber-400/10 px-2 py-1 text-[10px] font-semibold text-amber-200">
+                        ⚠ {rhRisk ? "Rh iso-immunisation risk" : ""}
+                        {rhRisk && aboRisk ? " · " : ""}
+                        {aboRisk ? "ABO incompatibility risk" : ""} — send DCT / TSB, plan phototherapy readiness.
+                      </p>
+                    );
+                  })()}
+              </>
+            )}
             <div className="lbl mt-3 mb-1">Isolation</div>
             <DialWithOther options={["none", "contact", "droplet", "protective", "airborne"]} value={f.isolation} onChange={(v: string) => v && set("isolation")(v)} tone="rose" otherPlaceholder="Other precaution…" />
 
@@ -353,6 +405,21 @@ function AdmitForm() {
                   <Stepper label="Apgar 1 min" value={f.apgar1} onChange={(n) => set("apgar1")(n)} min={0} max={10} />
                   <Stepper label="Apgar 5 min" value={f.apgar5} onChange={(n) => set("apgar5")(n)} min={0} max={10} />
                 </div>
+                {(() => {
+                  const band = fentonBand(f.gestWeeks, f.birthWeight);
+                  if (!band || !f.birthWeight) return null;
+                  const tone =
+                    band === "SGA"
+                      ? "border-amber-400/40 bg-amber-400/10 text-amber-200"
+                      : band === "LGA"
+                        ? "border-violet-400/40 bg-violet-400/10 text-violet-200"
+                        : "border-emerald-400/30 bg-emerald-400/10 text-emerald-200";
+                  return (
+                    <p className={`mt-2 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-bold ${tone}`}>
+                      Fenton (approx): {band} for {f.gestWeeks} wk · monitor {band === "SGA" ? "glucose & growth" : band === "LGA" ? "glucose (IDM)" : "routine growth"}
+                    </p>
+                  );
+                })()}
                 <div className="lbl mt-3 mb-1">Mode of delivery</div>
                 <DialWithOther options={DELIVERY} value={f.deliveryMode} onChange={(v: string) => v && set("deliveryMode")(v)} otherPlaceholder="Other delivery mode…" />
                 <div className="lbl mt-3 mb-1">Delivery room resuscitation (NRP)</div>
@@ -423,6 +490,32 @@ function AdmitForm() {
 
             <div className="lbl mt-3 mb-1">Illness severity at admission</div>
             <ChipGroup options={["stable", "guarded", "critical"]} value={f.acuity} onChange={(v: string) => v && set("acuity")(v)} tone="rose" />
+
+            <div className="mt-3">
+              <AdmissionTriage
+                unit={unit}
+                onApply={(r) => {
+                  setF((p) => ({
+                    ...p,
+                    acuity: r.suggestedAcuity,
+                    triage: {
+                      scale: r.scale,
+                      band: r.band,
+                      score: r.score,
+                      label: r.label,
+                      advice: r.advice,
+                      appliedAt: new Date().toISOString(),
+                    },
+                  }));
+                }}
+              />
+              {f.triage?.label && (
+                <p className="mt-1 text-[10px] text-slate-400">
+                  ✓ Triage applied: <b className="text-white">{f.triage.label}</b> ({f.triage.scale}) —{" "}
+                  {f.triage.advice}
+                </p>
+              )}
+            </div>
           </Section>
 
           {isNeo && (

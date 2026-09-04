@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, Circle } from "lucide-react";
 import { Chip, ChipGroup, DialWithOther, NumField, Section, Stepper, api, useTempUnit } from "@/components/ui";
+import { FlagsList, FluidsCalcPanel, GrowthFlagsRow, LabsInterpretation, RespInterpretation, VitalsInterpretation } from "@/components/interpret-ui";
+import { interpretVitals, type Flag, type VitalsInput } from "@/lib/interpret";
+import { PainScoreCalculator } from "@/components/pain-scores";
 import {
   ACTION_PRESETS,
   CARE_BUNDLE,
-  CONTINGENCY_PRESETS,
   DISCHARGE_CRITERIA,
   DRUGS,
   FEED_ROUTE,
@@ -24,6 +27,7 @@ import {
 import type { Detail } from "@/lib/types";
 import {
   calcNutrition,
+  fmtBP,
   fmtTime,
   gainGPerKgDay,
   pctOfBirth,
@@ -53,6 +57,8 @@ export function VitalsTab({
   const { unit } = useTempUnit();
   const [weight, setWeight] = useState<number | undefined>(undefined);
   const [hc, setHc] = useState<number | undefined>(undefined);
+  const [painScale, setPainScale] = useState(String(last.painScale ?? "NIPS"));
+  const [painRaw, setPainRaw] = useState(Number(last.painRaw ?? last.painScore ?? 0));
   const [v, setV] = useState<Record<string, number>>({
     hr: Number(last.hr ?? 140),
     rr: Number(last.rr ?? 45),
@@ -74,7 +80,13 @@ export function VitalsTab({
 
   const submit = async () => {
     setSaving(true);
-    await api(`/api/babies/${id}/vitals`, "POST", { ...v, recordedBy: user || "Nurse" });
+    await api(`/api/babies/${id}/vitals`, "POST", {
+      ...v,
+      painScale,
+      painRaw,
+      painScore: Math.round(painRaw),
+      recordedBy: user || "Nurse",
+    });
     if (weight) {
       const grams = useKg ? Math.round(weight * 1000) : Math.round(weight);
       const growth = [...(d.baby.clinical?.growth ?? []), { at: new Date().toISOString(), weight: grams, hc }];
@@ -118,14 +130,40 @@ export function VitalsTab({
               step={0.2}
               decimals={1}
             />
-            <Stepper label="Systolic BP" value={v.sbp} onChange={set("sbp")} min={20} max={120} />
-            <Stepper label="Diastolic BP" value={v.dbp} onChange={set("dbp")} min={10} max={90} />
-            <Stepper label="MAP mmHg" value={v.map} onChange={set("map")} min={15} max={90} />
+            <Stepper label="Systolic BP" value={v.sbp} onChange={set("sbp")} min={20} max={160} />
+            <Stepper label="Diastolic BP" value={v.dbp} onChange={set("dbp")} min={10} max={120} />
+            <Stepper label="MAP mmHg" value={v.map} onChange={set("map")} min={15} max={130} />
             <Stepper label="CRT sec" value={v.crt} onChange={set("crt")} min={1} max={8} />
             <Stepper label="RBS mg/dL" value={v.rbs} onChange={set("rbs")} min={10} max={400} step={5} />
             <Stepper label="FiO₂ %" value={v.fio2} onChange={set("fio2")} min={21} max={100} step={5} />
-            <Stepper label="Pain score (NIPS)" value={v.painScore} onChange={set("painScore")} min={0} max={7} />
+            <Stepper label={`Pain score (${painScale})`} value={painRaw} onChange={(n) => { setPainRaw(n); set("painScore")(n); }} min={painScale === "N-PASS" ? -10 : 0} max={painScale === "PIPP" ? 21 : painScale === "N-PASS" ? 11 : painScale === "CRIES" ? 10 : 7} step={1} />
             <Stepper label="Urine ml/kg/hr" value={v.urineMlKgHr} onChange={set("urineMlKgHr")} min={0} max={8} step={0.1} decimals={1} />
+          </div>
+          <div className="mt-2 flex items-center gap-2 rounded-lg border border-cyan-400/25 bg-cyan-400/5 px-3 py-1.5">
+            <span className="lbl">Blood pressure</span>
+            <span className="text-base font-black tabular-nums text-cyan-200">
+              {fmtBP(v.sbp, v.dbp, v.map)}
+            </span>
+            <span className="text-[10px] text-slate-400">mmHg · systolic/diastolic (MAP)</span>
+          </div>
+          {d.baby.unit === "nicu" && (
+            <div className="mt-3">
+              <PainScoreCalculator
+                onCompute={(scale, total) => {
+                  setPainScale(scale);
+                  setPainRaw(total);
+                  set("painScore")(total);
+                  window.dispatchEvent(
+                    new CustomEvent("neo:saved", {
+                      detail: `Pain score ${scale} = ${total} applied to observation`,
+                    }),
+                  );
+                }}
+              />
+            </div>
+          )}
+          <div className="mt-3">
+            <VitalsInterpretation baby={d.baby} v={v} painScale={painScale} painRaw={painRaw} />
           </div>
           <div className="mt-3 rounded-xl border border-cyan-400/25 bg-cyan-400/5 p-2">
             <div className="lbl mb-1.5">Serial monitoring — today&apos;s weight (optional)</div>
@@ -150,8 +188,9 @@ export function VitalsTab({
                 <th>RR</th>
                 <th>SpO₂</th>
                 <th>T °F</th>
-                <th>MAP</th>
+                <th>BP</th>
                 <th>RBS</th>
+                <th>Pain</th>
               </tr>
             </thead>
             <tbody className="text-slate-200">
@@ -162,8 +201,14 @@ export function VitalsTab({
                   <td>{r.rr ?? "—"}</td>
                   <td>{r.spo2 ?? "—"}</td>
                   <td>{tempOut(r.temp as number | null, unit) ?? "—"}</td>
-                  <td>{r.map ?? "—"}</td>
+                  <td className="whitespace-nowrap">{fmtBP(r.sbp as number | null, r.dbp as number | null, r.map as number | null)}</td>
                   <td>{r.rbs ?? "—"}</td>
+                  <td className="whitespace-nowrap">
+                    {r.painRaw ?? r.painScore ?? "—"}
+                    {(r.painScale as string | null) && (
+                      <span className="ml-0.5 text-[9px] text-slate-500">{String(r.painScale)}</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -186,6 +231,12 @@ export function RespTab({
   const resp = d.baby.clinical?.resp ?? {};
   const [s, setS] = useState({ ...resp, settings: { ...(resp.settings ?? {}) } });
   const setSetting = (k: string) => (n: number) => setS((p) => ({ ...p, settings: { ...p.settings, [k]: n } }));
+  const pao2 = (() => {
+    const labs = d.baby.clinical?.labs ?? {};
+    const raw = labs["pO2"] ?? labs["PaO2"];
+    const n = raw == null ? null : Number(String(raw).replace(/[^0-9.]/g, ""));
+    return n != null && Number.isFinite(n) ? n : null;
+  })();
   return (
     <div className="grid gap-3 lg:grid-cols-2">
       <Section
@@ -229,6 +280,15 @@ export function RespTab({
           value={s.spo2Target}
           onChange={(v: string) => setS((p) => ({ ...p, spo2Target: v }))}
         />
+        <div className="mt-3">
+          <RespInterpretation
+            map={(s.settings?.map as number | null) ?? null}
+            fio2={(s.settings?.fio2 as number | null) ?? null}
+            pao2={pao2}
+            silverman={(s.silverman as number | null) ?? null}
+            mode={s.mode}
+          />
+        </div>
       </Section>
       <Section title="Respiratory reference (NNF / AAP)">
         <ul className="space-y-2 text-xs text-slate-300">
@@ -246,7 +306,19 @@ export function FluidsTab({ d, patch }: { d: Detail; patch: (b: Record<string, u
   const [s, setS] = useState({ ...f });
   const wt = d.baby.currentWeight / 1000;
   const set = (k: string) => (n: number) => setS((p) => ({ ...p, [k]: n }));
+  const nutrition = calcNutrition({ fluids: s });
+  const nutritionFlags: Flag[] = [
+    nutrition.totalKcal < 110
+      ? { key: "kcal", label: `Energy ${nutrition.totalKcal} kcal/kg/d below target 110–135`, sev: "warn" }
+      : nutrition.totalKcal <= 135
+        ? { key: "kcal", label: `Energy ${nutrition.totalKcal} kcal/kg/d within target`, sev: "info" }
+        : { key: "kcal", label: `Energy ${nutrition.totalKcal} kcal/kg/d above target`, sev: "warn" },
+    nutrition.totalProtein < 3.5
+      ? { key: "prot", label: `Protein ${nutrition.totalProtein} g/kg/d below 3.5–4`, sev: "warn" }
+      : { key: "prot", label: `Protein ${nutrition.totalProtein} g/kg/d adequate`, sev: "info" },
+  ];
   return (
+    <div className="grid gap-3 lg:grid-cols-2">
     <Section
       title="Fluids, TPN & nutrition"
       right={<button className="btn-primary" onClick={() => patch({ clinical: { fluids: s } })}>Save</button>}
@@ -275,7 +347,12 @@ export function FluidsTab({ d, patch }: { d: Detail; patch: (b: Record<string, u
         onChange={(v: string) => setS((p) => ({ ...p, feedFreq: v }))}
         otherPlaceholder="Other frequency…"
       />
+      <div className="mt-3">
+        <FlagsList flags={nutritionFlags} />
+      </div>
     </Section>
+    <FluidsCalcPanel baby={d.baby} />
+    </div>
   );
 }
 
@@ -338,6 +415,25 @@ export function GrowthTab({
       <p className="mt-2 text-xs text-slate-400">
         Change from birth: {pctOfBirth(bw, cw) ?? 0}% · {entries.length} serial entries. Use Daily progress for the full calculator.
       </p>
+      <div className="mt-2">
+        <GrowthFlagsRow
+          velocity={
+            entries.length >= 2
+              ? (() => {
+                  const a = entries[entries.length - 2];
+                  const z = entries[entries.length - 1];
+                  const days = Math.max(0.5, (+new Date(z.at) - +new Date(a.at)) / 86400000);
+                  return gainGPerKgDay(a.weight, z.weight, days);
+                })()
+              : null
+          }
+          lossPct={(() => {
+            const nadir = Math.min(bw, cw, ...entries.map((e) => e.weight));
+            return bw > 0 ? Math.max(0, Math.round(((bw - nadir) / bw) * 1000) / 10) : 0;
+          })()}
+          regained={cw >= bw}
+        />
+      </div>
     </Section>
   );
 }
@@ -565,6 +661,9 @@ export function LabsTab({ d, patch }: { d: Detail; patch: (b: Record<string, unk
           </div>
         ))}
       </div>
+      <div className="mt-4">
+        <LabsInterpretation baby={d.baby} labs={labs} />
+      </div>
     </Section>
   );
 }
@@ -654,7 +753,10 @@ export function CourseTab({
         <p className="mt-3 text-xs text-slate-700">
           {b.babyName} ({b.uhid}), {b.sex}, {b.gestWeeks}+{b.gestDays} wk, BW {b.birthWeight} g → {lastWeight} g.
           Consultant {b.consultant || "—"}. Energy {n.totalKcal} kcal/kg/day · protein {n.totalProtein} g/kg/day.
-          Last temp {tempOut(lastVital.temp as number | null, "F") ?? "—"} °F.
+          Last vitals: BP {fmtBP(lastVital.sbp as number | null, lastVital.dbp as number | null, lastVital.map as number | null)} · temp {tempOut(lastVital.temp as number | null, "F") ?? "—"} °F.
+          {c.triage && (
+            <> Admission triage: {c.triage.label} ({c.triage.scale} {c.triage.score}, {c.triage.band}).</>
+          )}
         </p>
         <h3 className="lbl mt-4 mb-1">Diagnoses</h3>
         <ul className="text-xs text-slate-700">
@@ -686,7 +788,12 @@ export function HandoverTab({ d, id, reload, user }: { d: Detail; id: string; re
         `Primary consultant: ${b.consultant || "not assigned"}.`,
         `${b.gestWeeks}+${b.gestDays} wk ${b.sex}, BW ${b.birthWeight} g, DOL, wt ${b.currentWeight} g.`,
         `Support: ${c.resp?.mode ?? "room air"} FiO₂ ${c.resp?.settings?.fio2 ?? 21}%.`,
-        `Last vitals: HR ${v.hr ?? "—"}, T ${tempOut(v.temp as number | null, "F") ?? "—"} °F.`,
+        `Last vitals: HR ${v.hr ?? "—"}, BP ${fmtBP(v.sbp as number | null, v.dbp as number | null, v.map as number | null)}, T ${tempOut(v.temp as number | null, "F") ?? "—"} °F.`,
+        `Provisional: ${
+          interpretVitals(b, v as unknown as VitalsInput)
+            .map((fl) => fl.label)
+            .join("; ") || "within expected range"
+        }.`,
       ].join(" "),
     [b, c, v],
   );
@@ -694,8 +801,10 @@ export function HandoverTab({ d, id, reload, user }: { d: Detail; id: string; re
   const [toStaff, setToStaff] = useState("");
   const [illness, setIllness] = useState(b.acuity);
   const [summary, setSummary] = useState(autoSummary);
-  const [actions, setActions] = useState<string[]>(d.tasks.filter((t) => !t.done).map((t) => t.text));
-  const [cont, setCont] = useState<string[]>([]);
+  const [actions, setActions] = useState<string[]>([
+    ...new Set(d.tasks.filter((t) => !t.done).map((t) => t.text.trim()).filter(Boolean)),
+  ]);
+  const [actionDraft, setActionDraft] = useState("");
   const [synthesis, setSynthesis] = useState("Read-back completed at bedside with nurse in charge.");
   const [saving, setSaving] = useState(false);
   useEffect(() => setSummary(autoSummary), [autoSummary]);
@@ -716,8 +825,8 @@ export function HandoverTab({ d, id, reload, user }: { d: Detail; id: string; re
                   toStaff,
                   illness,
                   summary,
-                  actions,
-                  contingency: cont,
+                  actions: [...new Set(actions.map((a) => a.trim()).filter(Boolean))],
+                  contingency: [],
                   synthesis,
                   snapshot: { clinical: c, vitals: v, problems: d.problems },
                 });
@@ -740,20 +849,138 @@ export function HandoverTab({ d, id, reload, user }: { d: Detail; id: string; re
           <div className="lbl mt-3 mb-1">Synthesis</div>
           <input className="inp" value={synthesis} onChange={(e) => setSynthesis(e.target.value)} />
         </Section>
-        <Section title="Action list">
-          <DialWithOther options={ACTION_PRESETS} value={actions} onChange={(v2: string[]) => setActions(v2)} multi tone="emerald" otherPlaceholder="Add custom action…" />
-        </Section>
-        <Section title="Contingency">
-          <DialWithOther options={CONTINGENCY_PRESETS} value={cont} onChange={(v2: string[]) => setCont(v2)} multi tone="amber" otherPlaceholder="Add custom if–then…" />
+        <Section
+          title="Handover action list"
+          sub="Add each action once. The signed handover will display this list below the patient summary."
+        >
+          <div className="lbl mb-1">Quick add</div>
+          <div className="flex flex-wrap gap-1.5">
+            {ACTION_PRESETS.filter((preset) => !actions.includes(preset)).map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setActions((prev) => [...prev, preset])}
+                className="chip chip-off"
+              >
+                + {preset}
+              </button>
+            ))}
+            {ACTION_PRESETS.every((preset) => actions.includes(preset)) && (
+              <span className="text-[11px] text-emerald-300">✓ All preset actions have been added.</span>
+            )}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <input
+              className="inp"
+              value={actionDraft}
+              placeholder="Type another action…"
+              onChange={(e) => setActionDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const next = actionDraft.trim();
+                  if (next && !actions.includes(next)) setActions((prev) => [...prev, next]);
+                  setActionDraft("");
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={!actionDraft.trim() || actions.includes(actionDraft.trim())}
+              onClick={() => {
+                const next = actionDraft.trim();
+                if (next && !actions.includes(next)) setActions((prev) => [...prev, next]);
+                setActionDraft("");
+              }}
+            >
+              + Add action
+            </button>
+          </div>
+          <div className="mt-3 rounded-xl border border-emerald-400/25 bg-emerald-400/5 p-2">
+            <div className="lbl mb-1">Selected actions ({actions.length})</div>
+            {actions.length === 0 ? (
+              <p className="text-[11px] text-slate-500">No action selected.</p>
+            ) : (
+              <ol className="space-y-1">
+                {actions.map((action, index) => (
+                  <li
+                    key={`${action}-${index}`}
+                    className="flex items-start gap-2 rounded-lg border border-white/10 bg-slate-900/30 px-2 py-1.5 text-xs text-slate-200"
+                  >
+                    <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-400/15 text-[10px] font-black text-emerald-300">
+                      {index + 1}
+                    </span>
+                    <span className="flex-1">{action}</span>
+                    <button
+                      type="button"
+                      className="text-rose-300"
+                      title="Remove action"
+                      onClick={() => setActions((prev) => prev.filter((_, i) => i !== index))}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
         </Section>
       </div>
-      <Section title="Handover history">
+      <Section title="Handover history" sub="Patient summary + action list">
         {d.handovers.map((h) => (
-          <div key={h.id} className="mb-2 rounded-xl border border-white/10 bg-slate-900/40 p-2 text-xs">
+          <div key={h.id} className="mb-3 rounded-xl border border-white/10 bg-slate-900/40 p-3 text-xs">
             <div className="text-[10px] text-slate-400">{h.shift} · {h.fromStaff} → {h.toStaff || "—"} · {fmtTime(h.createdAt)}</div>
-            <p className="mt-1 text-slate-200">{h.summary}</p>
+            <div className="lbl mt-2">Patient summary</div>
+            <p className="text-slate-200">{h.summary}</p>
+            <div className="mt-2 rounded-lg border border-emerald-400/25 bg-emerald-400/5 p-2">
+              <div className="lbl mb-1 text-emerald-300">Action list ({h.actions?.length ?? 0})</div>
+              {h.actions?.length ? (
+                <ol className="space-y-1 text-[11px] text-slate-100">
+                  {[...new Set(h.actions.map((a) => String(a).trim()).filter(Boolean))].map((action, index) => {
+                    const task = d.tasks.find(
+                      (t) => t.text.trim().toLowerCase() === action.toLowerCase(),
+                    );
+                    const done = !!task?.done;
+                    return (
+                      <li key={`${action}-${index}`} className="flex items-start gap-1.5">
+                        <button
+                          type="button"
+                          title={done ? "Re-open action" : "Mark as completed"}
+                          onClick={async () => {
+                            if (!task) return;
+                            await api(`/api/babies/${id}/tasks`, "PATCH", {
+                              id: task.id,
+                              done: !done,
+                              doneBy: user || "Team",
+                            });
+                            reload();
+                          }}
+                          className={`mt-0.5 shrink-0 ${done ? "text-emerald-300" : "text-slate-500 hover:text-emerald-300"}`}
+                        >
+                          {done ? <CheckCircle2 size={13} strokeWidth={2.4} /> : <Circle size={13} />}
+                        </button>
+                        <span className={done ? "text-slate-400 line-through" : ""}>{action}</span>
+                        {done && task?.doneAt && (
+                          <span className="ml-auto shrink-0 text-[10px] text-emerald-300/90">
+                            ✓ {fmtTime(task.doneAt)}
+                            {task.doneBy ? ` · ${task.doneBy}` : ""}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <p className="text-[11px] text-slate-500">No handover action recorded.</p>
+              )}
+            </div>
+            {h.synthesis && (
+              <p className="mt-2 text-[10px] text-slate-400">Read-back: {h.synthesis}</p>
+            )}
           </div>
         ))}
+        {d.handovers.length === 0 && <p className="text-xs text-slate-400">No handover recorded yet.</p>}
       </Section>
     </div>
   );

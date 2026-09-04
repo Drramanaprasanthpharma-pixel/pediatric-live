@@ -59,6 +59,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     "apgar1",
     "apgar5",
     "bloodGroup",
+    "motherBloodGroup",
     "inborn",
     "acuity",
     "status",

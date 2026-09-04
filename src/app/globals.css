@@ -75,11 +75,13 @@ body {
   background-attachment: fixed;
   color: var(--text);
   min-height: 100vh;
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "ss01";
   letter-spacing: -0.006em;
 }
 
-h1, h2, h3 {
+h1, h2, h3, .font-display {
+  font-family: var(--font-display), var(--font-body), ui-sans-serif, system-ui, sans-serif;
   letter-spacing: -0.02em;
   color: var(--text);
 }
@@ -619,3 +621,106 @@ body.view-only button[title="Delete card"] {
     box-shadow: none !important;
   }
 }
+
+/* ============================================================
+   LIGHT THEME v2 — vivid, high-contrast, never washed-out.
+   Layered over the base so it wins by source order.
+   ============================================================ */
+html.light {
+  --bg: #eef4fb;
+  --bg-glow-1: rgba(56, 189, 248, 0.28);
+  --bg-glow-2: rgba(99, 102, 241, 0.16);
+  --bg-glow-3: rgba(16, 185, 129, 0.14);
+  --card: #ffffff;
+  --card-hi: #f2f7fd;
+  --border: #c8d8ea;
+  --border-strong: #9db8d6;
+  --text: #0c1a2b;
+  --text-2: #1e3049;
+  --text-3: #3f5573;
+  --text-4: #64748b;
+}
+
+/* Ambient light background with soft color fields (not flat white) */
+html.light body {
+  background:
+    radial-gradient(1100px 560px at 6% -12%, var(--bg-glow-1) 0%, transparent 60%),
+    radial-gradient(950px 520px at 98% -6%, var(--bg-glow-2) 0%, transparent 58%),
+    radial-gradient(900px 600px at 50% 112%, var(--bg-glow-3) 0%, transparent 62%),
+    linear-gradient(180deg, #eaf2fb 0%, #f4f9ff 45%, #ffffff 100%);
+  background-attachment: fixed;
+}
+
+/* Cards: white, colored top accent, real border + shadow */
+html.light .card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(12, 26, 43, 0.06), 0 10px 26px -18px rgba(12, 26, 43, 0.35);
+}
+
+/* Strong tinted surfaces (fix washed /5 /10 /15 fills) */
+html.light .bg-cyan-400\/5, html.light .bg-cyan-400\/10, html.light .bg-cyan-400\/15 { background-color: #d9f1fd; }
+html.light .bg-emerald-400\/10 { background-color: #d3f4e4; }
+html.light .bg-amber-400\/10, html.light .bg-amber-400\/5 { background-color: #fdeccd; }
+html.light .bg-rose-400\/10, html.light .bg-rose-500\/10, html.light .bg-rose-500\/15 { background-color: #ffdee4; }
+html.light .bg-sky-400\/10 { background-color: #dcf0fe; }
+html.light .bg-violet-400\/10 { background-color: #eae4fd; }
+html.light .bg-indigo-400\/10 { background-color: #e3e6fd; }
+
+/* Neutral dark-tinted panels -> light neutral panels */
+html.light .bg-slate-900\/40, html.light .bg-slate-900\/50, html.light .bg-slate-900\/60 { background-color: #eef4fb; }
+html.light .bg-slate-900\/90, html.light .bg-slate-900\/95 { background-color: #f4f9ff; }
+html.light .bg-slate-950\/40, html.light .bg-slate-950\/60, html.light .bg-slate-950\/70, html.light .bg-slate-950\/80 { background-color: rgba(255,255,255,0.92); }
+html.light .bg-white\/5, html.light .bg-white\/10, html.light .bg-white\/\[0\.02\], html.light .bg-white\/\[0\.03\], html.light .bg-white\/\[0\.04\], html.light .bg-white\/\[0\.07\] { background-color: #eef4fb; }
+
+/* Borders */
+html.light .border-white\/5, html.light .border-white\/10, html.light .border-white\/20 { border-color: var(--border); }
+html.light .border-cyan-400\/20, html.light .border-cyan-400\/25, html.light .border-cyan-400\/30, html.light .border-cyan-400\/35, html.light .border-cyan-400\/40 { border-color: #7cc8e8; }
+html.light .border-emerald-400\/20, html.light .border-emerald-400\/30, html.light .border-emerald-400\/40 { border-color: #7fd8b1; }
+html.light .border-amber-400\/20, html.light .border-amber-400\/30, html.light .border-amber-400\/40 { border-color: #f0c377; }
+html.light .border-rose-400\/30, html.light .border-rose-400\/40, html.light .border-rose-400\/50, html.light .border-rose-500\/40 { border-color: #f5a3b3; }
+
+/* Text: strong, readable accents (no pale-on-white) */
+html.light .text-white { color: #0c1a2b; }
+html.light .text-slate-100, html.light .text-slate-200, html.light .text-slate-300 { color: #1e3049; }
+html.light .text-slate-400 { color: #3f5573; }
+html.light .text-slate-500 { color: #5a6c85; }
+html.light .text-slate-600 { color: #4a5b73; }
+html.light .text-cyan-200, html.light .text-cyan-300 { color: #0369a1; }
+html.light .text-emerald-200, html.light .text-emerald-300 { color: #047857; }
+html.light .text-amber-200, html.light .text-amber-300 { color: #b45309; }
+html.light .text-rose-200, html.light .text-rose-300 { color: #be123c; }
+html.light .text-sky-300 { color: #0369a1; }
+html.light .text-violet-200, html.light .text-violet-300 { color: #6d28d9; }
+html.light .text-indigo-300 { color: #4338ca; }
+
+/* Chips */
+html.light .chip-off { background: #ffffff; border-color: var(--border); color: #1e3049; }
+html.light .chip-off:hover { border-color: #0284c7; background: #e6f4fd; color: #0c1a2b; }
+html.light .chip-on { color: #ffffff; }
+
+/* Steppers / inputs */
+html.light .inp { background: #ffffff; border-color: var(--border); color: #0c1a2b; }
+html.light .inp:focus { border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2,132,199,0.18); }
+
+/* Buttons */
+html.light .btn-ghost { background: #ffffff; border-color: var(--border); color: #1e3049; }
+html.light .btn-ghost:hover { background: #e6f4fd; border-color: #0284c7; color: #0c1a2b; }
+
+/* Header */
+html.light header { background: rgba(255,255,255,0.94); border-bottom: 1px solid var(--border); }
+
+/* Tables */
+html.light thead th { background: #eaf4fd; color: #164e78; border-bottom: 2px solid #bcd9ef; }
+html.light tbody tr { border-color: #e3edf7; }
+html.light tbody tr:hover { background: #f2f9ff; }
+
+/* Theme switch clearly visible in light */
+html.light .theme-switch { background: #ffffff; border-color: var(--border-strong); }
+html.light .theme-switch button { color: #1e3049; }
+html.light .theme-switch button.theme-on.bg-amber-400 { color: #3a2a03; }
+html.light .theme-switch button.text-white { color: #ffffff; }
+
+/* Scrollbars */
+html.light ::-webkit-scrollbar-thumb { background: rgba(2,132,199,0.35); }
+

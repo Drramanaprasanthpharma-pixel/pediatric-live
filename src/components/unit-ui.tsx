@@ -1,5 +1,6 @@
 "use client";
 
+import { HeartPulse, LayoutGrid } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { UNIT_LIST, type UnitKey, allBeds, defaultBed, unitOf } from "@/lib/units";
@@ -13,10 +14,35 @@ const ACCENT: Record<string, { chip: string; on: string; dot: string }> = {
   emerald: { chip: "border-emerald-400/50 bg-emerald-400/10 text-emerald-200", on: "border-emerald-300 bg-emerald-500 text-slate-950", dot: "bg-emerald-400" },
 };
 
-/** Unit switcher shown in the top bar — switches the whole engine between wards. */
-export function UnitSwitcher({ active, onChange }: { active: UnitKey; onChange: (u: UnitKey) => void }) {
+/**
+ * Unit switcher shown in the top bar — switches the whole engine between wards.
+ * Pass `includeAll` to add an "All units" option (value "all").
+ */
+export function UnitSwitcher({
+  active,
+  onChange,
+  includeAll = false,
+}: {
+  active: UnitKey | "all";
+  onChange: (u: UnitKey | "all") => void;
+  includeAll?: boolean;
+}) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
+      {includeAll && (
+        <button
+          onClick={() => onChange("all")}
+          title="View every case across all units"
+          className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-black transition active:scale-95 ${
+            active === "all"
+              ? "border-indigo-300 bg-indigo-500 text-white"
+              : "border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10"
+          }`}
+        >
+          <LayoutGrid size={15} strokeWidth={2.4} aria-hidden className="shrink-0" />
+          ALL
+        </button>
+      )}
       {UNIT_LIST.map((u) => {
         const on = u.key === active;
         const acc = ACCENT[u.color];
@@ -29,7 +55,11 @@ export function UnitSwitcher({ active, onChange }: { active: UnitKey; onChange: 
               on ? acc.on : "border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10"
             }`}
           >
-            <span>{u.emoji}</span>
+            {u.key === "picu" ? (
+              <HeartPulse size={16} strokeWidth={2.5} aria-hidden className="shrink-0" />
+            ) : (
+              <span aria-hidden>{u.emoji}</span>
+            )}
             {u.short}
           </button>
         );

@@ -41,6 +41,7 @@ export async function POST(req: Request) {
       apgar1: int(body.apgar1, 8),
       apgar5: int(body.apgar5, 9),
       bloodGroup: body.bloodGroup ?? "Unknown",
+      motherBloodGroup: body.motherBloodGroup ?? "Unknown",
       inborn: body.inborn ?? true,
       acuity: body.acuity ?? "stable",
       isolation: body.isolation ?? "none",

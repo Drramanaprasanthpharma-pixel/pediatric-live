@@ -45,6 +45,7 @@ async function insertSnapshot(snap: Snap, labelSuffix = "") {
       apgar1: Number(b.apgar1 ?? 8),
       apgar5: Number(b.apgar5 ?? 9),
       bloodGroup: String(b.bloodGroup ?? "Unknown"),
+      motherBloodGroup: String(b.motherBloodGroup ?? "Unknown"),
       inborn: Boolean(b.inborn ?? true),
       acuity: String(b.acuity ?? "stable"),
       status: "active",
@@ -88,6 +89,8 @@ async function insertSnapshot(snap: Snap, labelSuffix = "") {
         rbs: v.rbs == null ? null : Number(v.rbs),
         fio2: v.fio2 == null ? null : Number(v.fio2),
         painScore: v.painScore == null ? null : Number(v.painScore),
+        painScale: String(v.painScale ?? "NIPS"),
+        painRaw: v.painRaw == null ? (v.painScore == null ? null : Number(v.painScore)) : Number(v.painRaw),
         urineMlKgHr: v.urineMlKgHr == null ? null : Number(v.urineMlKgHr),
         notes: String(v.notes ?? ""),
       })),
@@ -120,6 +123,9 @@ async function insertSnapshot(snap: Snap, labelSuffix = "") {
         text: String(t.text ?? ""),
         priority: String(t.priority ?? "today"),
         done: Boolean(t.done),
+        // backward-compatible: older backups may not carry completion metadata
+        doneAt: t.done && t.doneAt ? new Date(String(t.doneAt)) : null,
+        doneBy: String(t.doneBy ?? ""),
         owner: String(t.owner ?? "Team"),
       })),
     );

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, Moon, Sun } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -416,20 +416,20 @@ export function ThemeToggle() {
       <button
         onClick={() => apply(true)}
         aria-pressed={light}
-        className={`flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+        className={`flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
           light ? "theme-on bg-amber-400 text-slate-900" : "text-slate-300 hover:bg-white/10"
         }`}
       >
-        ☀️ <span className="hidden sm:inline">Light</span>
+        <Sun size={13} strokeWidth={2.5} /> <span>Light</span>
       </button>
       <button
         onClick={() => apply(false)}
         aria-pressed={!light}
-        className={`flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+        className={`flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
           !light ? "theme-on bg-indigo-500 text-white" : "text-slate-300 hover:bg-white/10"
         }`}
       >
-        🌙 <span className="hidden sm:inline">Dark</span>
+        <Moon size={13} strokeWidth={2.5} /> <span>Dark</span>
       </button>
     </div>
   );
@@ -497,6 +497,8 @@ export function TopBar({
           <MobileNavLink href="/consultants" icon="👨‍⚕️">By consultant</MobileNavLink>
           <MobileNavLink href="/handover" icon="🖨️">Shift sheet</MobileNavLink>
           <MobileNavLink href="/reference" icon="📖">Parameters</MobileNavLink>
+          <MobileNavLink href="/learning" icon="🎓">Learning space</MobileNavLink>
+          <MobileNavLink href="/updates" icon="📰">Recent updates</MobileNavLink>
           <MobileNavLink href="/roster" icon="📅">Duty roster</MobileNavLink>
         </div>
         {/* soft edge fades hint at scrollable content on small screens */}

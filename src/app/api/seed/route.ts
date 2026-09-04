@@ -350,5 +350,117 @@ export async function POST() {
     });
   }
 
-  return NextResponse.json({ ok: true, count: seedBabies.length });
+  // One representative patient per remaining unit so every board is populated.
+  type ExtraSeed = {
+    unit: string;
+    subspecialty?: string;
+    motherName: string;
+    bed: string;
+    sex: string;
+    gestWeeks: number;
+    birthWeight: number;
+    currentWeight: number;
+    acuity: string;
+    consultant: string;
+    insurance?: string;
+    insuranceName?: string;
+    deliveryMode?: string;
+    bloodGroup?: string;
+    motherBloodGroup?: string;
+    clinical?: Record<string, unknown>;
+  };
+  const extra: ExtraSeed[] = [
+    {
+      unit: "picu",
+      subspecialty: "cvicu",
+      motherName: "Karthik R",
+      bed: "PICU 1",
+      sex: "Male",
+      gestWeeks: 6,
+      birthWeight: 19000,
+      currentWeight: 18500,
+      acuity: "critical",
+      consultant: "Dr. Sujamariam",
+      insurance: "Insurance",
+      insuranceName: "Star Health",
+      clinical: { resp: { mode: "SIMV + PS", settings: { fio2: 45, peep: 6, pip: 22, rate: 24 } } },
+    },
+    {
+      unit: "stepdown",
+      subspecialty: "licu",
+      motherName: "Meena S",
+      bed: "SD 2",
+      sex: "Female",
+      gestWeeks: 10,
+      birthWeight: 28000,
+      currentWeight: 27200,
+      acuity: "guarded",
+      consultant: "Dr. Shobi Anandhi",
+      insurance: "Scheme (Govt / CMCHIS)",
+    },
+    {
+      unit: "postnatal",
+      motherName: "Deepa Rani",
+      bed: "DELUXE B",
+      sex: "Female",
+      gestWeeks: 39,
+      birthWeight: 2950,
+      currentWeight: 2880,
+      acuity: "stable",
+      consultant: "Dr. Devaprasath",
+      insurance: "Self-pay / cash",
+      deliveryMode: "LSCS",
+      motherBloodGroup: "O−",
+      bloodGroup: "B+",
+    },
+    {
+      unit: "paeds",
+      motherName: "Arjun K",
+      bed: "SPECIAL A",
+      sex: "Male",
+      gestWeeks: 8,
+      birthWeight: 24000,
+      currentWeight: 23400,
+      acuity: "guarded",
+      consultant: "Dr. Indira Devi",
+      insurance: "Corporate / TPA",
+    },
+  ];
+  for (const e of extra) {
+    const [row] = await db
+      .insert(babies)
+      .values({
+        uhid: `NIC-${Date.now().toString().slice(-6)}-${e.unit}`,
+        babyName: `Baby of ${e.motherName}`,
+        motherName: e.motherName ?? "",
+        bed: e.bed ?? "",
+        unit: e.unit,
+        subspecialty: e.subspecialty ?? "",
+        sex: e.sex ?? "Male",
+        gestWeeks: e.gestWeeks ?? 37,
+        gestDays: 0,
+        birthWeight: e.birthWeight ?? 2500,
+        currentWeight: e.currentWeight ?? e.birthWeight ?? 2500,
+        deliveryMode: e.deliveryMode ?? "LSCS",
+        apgar1: 8,
+        apgar5: 9,
+        bloodGroup: e.bloodGroup ?? "Unknown",
+        motherBloodGroup: e.motherBloodGroup ?? "Unknown",
+        inborn: true,
+        acuity: e.acuity ?? "stable",
+        consultant: e.consultant ?? "",
+        insurance: e.insurance ?? "",
+        insuranceName: e.insuranceName ?? "",
+        clinical: (e.clinical as Record<string, unknown>) ?? {},
+      })
+      .returning();
+    await db.insert(events).values({
+      babyId: row.id,
+      kind: "admission",
+      text: `Admitted to ${e.unit.toUpperCase()}`,
+      author: "Admitting team",
+    });
+  }
+
+  return NextResponse.json({ ok: true, count: seedBabies.length + extra.length });
 }

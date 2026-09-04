@@ -67,6 +67,8 @@ export async function POST(req: Request, ctx: Ctx) {
           rbs: asIntOrNull(body.rbs),
           fio2: asIntOrNull(body.fio2),
           painScore: asIntOrNull(body.painScore),
+          painScale: String(body.painScale ?? "NIPS"),
+          painRaw: asRealOrNull(body.painRaw ?? body.painScore),
           urineMlKgHr: asRealOrNull(body.urineMlKgHr),
           notes: body.notes ?? "",
         })
@@ -98,6 +100,15 @@ export async function POST(req: Request, ctx: Ctx) {
       return NextResponse.json({ rows });
     }
     case "handovers": {
+      const actionItems = Array.isArray(body.actions)
+        ? [
+            ...new Set(
+              (body.actions as unknown[])
+                .map((a) => String(a).trim())
+                .filter(Boolean),
+            ),
+          ]
+        : [];
       const [row] = await db
         .insert(handovers)
         .values({
@@ -107,23 +118,35 @@ export async function POST(req: Request, ctx: Ctx) {
           toStaff: body.toStaff ?? "",
           illness: body.illness ?? "stable",
           summary: body.summary ?? "",
-          actions: body.actions ?? [],
-          contingency: body.contingency ?? [],
+          actions: actionItems,
+          contingency: [],
           synthesis: body.synthesis ?? "",
           snapshot: body.snapshot ?? {},
         })
         .returning();
-      if (Array.isArray(body.actions) && body.actions.length) {
-        await db.insert(tasks).values(
-          (body.actions as string[]).map((t) => ({
-            babyId: id,
-            text: t,
-            priority: "today",
-            owner: body.toStaff || "Team",
-          })),
+      if (actionItems.length) {
+        const currentTasks = await db.select().from(tasks).where(eq(tasks.babyId, id));
+        const existingOpen = new Set(
+          currentTasks.filter((t) => !t.done).map((t) => t.text.trim().toLowerCase()),
         );
+        const newTasks = actionItems.filter((t) => !existingOpen.has(t.toLowerCase()));
+        if (newTasks.length) {
+          await db.insert(tasks).values(
+            newTasks.map((t) => ({
+              babyId: id,
+              text: t,
+              priority: "today",
+              owner: body.toStaff || "Team",
+            })),
+          );
+        }
       }
-      await log(id, "handover", `${body.shift} handover signed by ${body.fromStaff || "staff"}`, body.fromStaff);
+      await log(
+        id,
+        "handover",
+        `${body.shift} handover signed by ${body.fromStaff || "staff"} · ${actionItems.length} action${actionItems.length === 1 ? "" : "s"}`,
+        body.fromStaff,
+      );
       return NextResponse.json({ row });
     }
     default:
@@ -151,11 +174,16 @@ export async function PATCH(req: Request, ctx: Ctx) {
     return NextResponse.json({ row });
   }
   if (resource === "tasks") {
-    const [row] = await db
-      .update(tasks)
-      .set({ done: body.done, text: body.text, priority: body.priority })
-      .where(eq(tasks.id, body.id))
-      .returning();
+    const patch: Record<string, unknown> = {};
+    if (body.text !== undefined) patch.text = String(body.text);
+    if (body.priority !== undefined) patch.priority = String(body.priority);
+    if (body.done !== undefined) {
+      const done = Boolean(body.done);
+      patch.done = done;
+      patch.doneAt = done ? new Date() : null;
+      patch.doneBy = done ? String(body.doneBy ?? editorOf(req) ?? "") : "";
+    }
+    const [row] = await db.update(tasks).set(patch).where(eq(tasks.id, body.id)).returning();
     return NextResponse.json({ row });
   }
   if (resource === "handovers") {

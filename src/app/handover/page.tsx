@@ -6,7 +6,7 @@ import { OnCallPrintStrip } from "@/components/oncall";
 import { TopBar, usePoll, useTempUnit } from "@/components/ui";
 import { UnitBadge, UnitSwitcher } from "@/components/unit-ui";
 import type { Clinical } from "@/lib/clinical";
-import { correctedGA, dayOfLife, fmtTime, tempOut } from "@/lib/clinical";
+import { correctedGA, dayOfLife, fmtBP, fmtTime, tempOut } from "@/lib/clinical";
 import { UNITS, type UnitKey, unitOf } from "@/lib/units";
 
 type B = {
@@ -134,7 +134,7 @@ function Sheet() {
                   <div>
                     <P
                       k="Last vitals"
-                      v={`HR ${v.hr ?? "—"} · RR ${v.rr ?? "—"} · SpO₂ ${v.spo2 ?? "—"}% · T ${tempOut(v.temp as number | null, tUnit) ?? "—"}°${tUnit} · MAP ${v.map ?? "—"} · RBS ${v.rbs ?? "—"}`}
+                      v={`HR ${v.hr ?? "—"} · RR ${v.rr ?? "—"} · SpO₂ ${v.spo2 ?? "—"}% · T ${tempOut(v.temp as number | null, tUnit) ?? "—"}°${tUnit} · BP ${fmtBP(v.sbp as number | null, v.dbp as number | null, v.map as number | null)} · RBS ${v.rbs ?? "—"}`}
                     />
                     <P k="Labs" v={Object.entries(c.labs ?? {}).filter(([, x]) => x).map(([k, x]) => `${k} ${x}`).join(" · ") || "—"} />
                     <P k="Plan" v={c.plan ?? "—"} />

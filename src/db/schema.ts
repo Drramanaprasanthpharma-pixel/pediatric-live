@@ -36,6 +36,8 @@ export const babies = pgTable(
     apgar1: integer("apgar1").notNull().default(8),
     apgar5: integer("apgar5").notNull().default(9),
     bloodGroup: text("blood_group").notNull().default("Unknown"),
+    /** Mother's blood group — captured in NICU & Postnatal for iso-immunisation risk & maternal transfusion. */
+    motherBloodGroup: text("mother_blood_group").notNull().default("Unknown"),
     inborn: boolean("inborn").notNull().default(true),
     acuity: text("acuity").notNull().default("stable"), // critical | guarded | stable | ready
     status: text("status").notNull().default("active"), // active | discharged | transferred | death
@@ -92,6 +94,9 @@ export const vitals = pgTable(
     rbs: integer("rbs"),
     fio2: integer("fio2"),
     painScore: integer("pain_score"),
+    /** Exact neonatal pain scale used and raw total (e.g. PIPP-R 14/21). */
+    painScale: text("pain_scale").notNull().default("NIPS"),
+    painRaw: real("pain_raw"),
     urineMlKgHr: real("urine_ml_kg_hr"),
     notes: text("notes").notNull().default(""),
   },
@@ -119,12 +124,53 @@ export const tasks = pgTable(
     text: text("text").notNull(),
     priority: text("priority").notNull().default("routine"), // now | today | routine
     done: boolean("done").notNull().default(false),
+    /** When the action was marked completed (null while open). */
+    doneAt: timestamp("done_at", { withTimezone: true }),
+    /** Who marked it completed. */
+    doneBy: text("done_by").notNull().default(""),
     owner: text("owner").notNull().default("Team"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
   (t) => [index("tasks_baby_idx").on(t.babyId)],
+);
+
+export const learningItems = pgTable(
+  "learning_items",
+  {
+    id: serial("id").primaryKey(),
+    /** YYYY-MM-DD */
+    day: text("day").notNull(),
+    time: text("time").notNull().default(""), // e.g. "08:00"
+    title: text("title").notNull(),
+    kind: text("kind").notNull().default("class"), // class | seminar | journal | grand round | skills lab | webinar
+    presenter: text("presenter").notNull().default(""),
+    venue: text("venue").notNull().default(""),
+    audience: text("audience").notNull().default(""),
+    notes: text("notes").notNull().default(""),
+    link: text("link").notNull().default(""),
+    createdBy: text("created_by").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("learning_day_idx").on(t.day)],
+);
+
+export const recentUpdates = pgTable(
+  "recent_updates",
+  {
+    id: serial("id").primaryKey(),
+    title: text("title").notNull(),
+    source: text("source").notNull().default(""),
+    url: text("url").notNull().default(""),
+    summary: text("summary").notNull().default(""),
+    tags: text("tags").notNull().default(""), // comma separated
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+    pinnedBy: text("pinned_by").notNull().default(""), // if manually pinned/curated
+  },
+  (t) => [index("recent_updates_fetched_idx").on(t.fetchedAt)],
 );
 
 export const roster = pgTable(

@@ -17,6 +17,7 @@ export type Detail = {
     apgar1: number;
     apgar5: number;
     bloodGroup: string;
+    motherBloodGroup: string;
     inborn: boolean;
     acuity: string;
     status: string;
@@ -40,7 +41,14 @@ export type Detail = {
   }[];
   vitals: Record<string, number | string | null>[];
   events: { id: number; kind: string; text: string; author: string; at: string }[];
-  tasks: { id: number; text: string; priority: string; done: boolean }[];
+  tasks: {
+    id: number;
+    text: string;
+    priority: string;
+    done: boolean;
+    doneAt: string | null;
+    doneBy: string;
+  }[];
   handovers: {
     id: number;
     shift: string;

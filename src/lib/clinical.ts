@@ -11,6 +11,14 @@ export type GrowthEntry = {
 };
 
 export type Clinical = {
+  triage?: {
+    scale: string;
+    band: string;
+    score: number;
+    label: string;
+    advice: string;
+    appliedAt: string;
+  };
   growth?: GrowthEntry[];
   resp?: {
     mode?: string;
@@ -197,6 +205,29 @@ export function tempIn(v: number, unit: TempUnit): number {
 export function fmtTemp(c: number | null | undefined, unit: TempUnit): string {
   const v = tempOut(c, unit);
   return v === null ? "—" : `${v.toFixed(1)} °${unit}`;
+}
+
+/**
+ * Universal blood-pressure formatter — shows systolic/diastolic (MAP) together
+ * in a single value, e.g. "82/56 (72)". Falls back gracefully when parts are missing.
+ */
+export function fmtBP(
+  sbp: number | string | null | undefined,
+  dbp: number | string | null | undefined,
+  map: number | string | null | undefined,
+): string {
+  const n = (x: number | string | null | undefined) => {
+    if (x === null || x === undefined || x === "") return null;
+    const v = Number(x);
+    return Number.isFinite(v) ? Math.round(v) : null;
+  };
+  const s = n(sbp);
+  const d = n(dbp);
+  const m = n(map);
+  if (s !== null && d !== null) return `${s}/${d}${m !== null ? ` (${m})` : ""}`;
+  if (m !== null) return `(${m})`;
+  if (s !== null || d !== null) return `${s ?? "—"}/${d ?? "—"}`;
+  return "—";
 }
 
 /** Growth velocity in g/kg/day between two weights. */

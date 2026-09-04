@@ -1,7 +1,17 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { IBM_Plex_Sans, Sora } from "next/font/google";
 import "./globals.css";
 import { LockBanner, SaveToast } from "@/components/ui";
+
+const displayFont = Sora({ subsets: ["latin"], variable: "--font-display", display: "swap" });
+const bodyFont = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-body",
+  display: "swap",
+});
+import { APP_VERSION, BACKUP_SCHEMA_VERSION } from "@/lib/backup-schema";
 import { PwaEngine } from "@/components/pwa";
 import { BackupEngine, UndoBar } from "@/components/backup-ui";
 
@@ -40,7 +50,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>
-      <body className="text-slate-100 antialiased">
+      <body className={`${displayFont.variable} ${bodyFont.variable} text-slate-100 antialiased`}>
         <LockBanner />
         {children}
         <footer className="no-print border-t border-white/5 py-5 text-center">
@@ -62,6 +72,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <p className="mt-1 text-[9px] text-slate-600">
             Install as an app — iOS: Share → Add to Home Screen · Android: Install app · Windows: install from the
             browser bar · Use the 🔗 Share link button to invite your team
+          </p>
+          <p className="mt-1 text-[9px] text-slate-600">
+            v{APP_VERSION} · backup schema v{BACKUP_SCHEMA_VERSION} — backups are versioned and forward-compatible.
           </p>
         </footer>
         <SaveToast />

@@ -12,6 +12,13 @@ import {
   type BackupEntry,
 } from "@/lib/backup";
 import { fmtTime } from "@/lib/clinical";
+import {
+  APP_VERSION,
+  BACKUP_SCHEMA_VERSION,
+  migrateBaby,
+  migrateStore,
+  wrapBackup,
+} from "@/lib/backup-schema";
 
 export type DeletableBaby = {
   id: number;
@@ -145,12 +152,14 @@ export function BackupVault({ onRestored }: { onRestored?: () => void }) {
   }, []);
 
   const restoreSnap = async (snap: BabySnapshot, asCopy = false) => {
-    const id = Number(snap.baby?.id ?? 0);
+    // Migrate older-schema snapshots up to the current schema before restoring.
+    const migrated = migrateBaby(snap);
+    const id = Number((migrated.baby as { id?: number })?.id ?? 0);
     setBusy(id || "x");
     await api("/api/babies/restore", "POST", {
       mode: asCopy ? "new" : "reactivate",
       asCopy,
-      snapshot: snap,
+      snapshot: migrated,
       author: localStorage.getItem("neo_user") || "Team",
     });
     setBusy(null);
@@ -161,11 +170,27 @@ export function BackupVault({ onRestored }: { onRestored?: () => void }) {
   const restoreEntry = async (entry: BackupEntry, asCopy = false) => {
     setBusy(entry.id ?? "x");
     if (isUnitData(entry.data)) {
-      for (const snap of entry.data.babies) {
+      // Migrate the whole store, then restore each baby snapshot from it.
+      const store = migrateStore(entry.data);
+      const babies = (store.babies as Record<string, unknown>[]) ?? [];
+      const problems = (store.problems as Record<string, unknown>[]) ?? [];
+      const vitals = (store.vitals as Record<string, unknown>[]) ?? [];
+      const events = (store.events as Record<string, unknown>[]) ?? [];
+      const tasks = (store.tasks as Record<string, unknown>[]) ?? [];
+      const handovers = (store.handovers as Record<string, unknown>[]) ?? [];
+      for (const baby of babies) {
+        const bid = Number(baby.id);
         await api("/api/babies/restore", "POST", {
           mode: asCopy ? "new" : "reactivate",
           asCopy,
-          snapshot: snap,
+          snapshot: {
+            baby,
+            problems: problems.filter((x) => Number(x.babyId) === bid),
+            vitals: vitals.filter((x) => Number(x.babyId) === bid),
+            events: events.filter((x) => Number(x.babyId) === bid),
+            tasks: tasks.filter((x) => Number(x.babyId) === bid),
+            handovers: handovers.filter((x) => Number(x.babyId) === bid),
+          },
           author: localStorage.getItem("neo_user") || "Team",
         });
       }
@@ -181,8 +206,12 @@ export function BackupVault({ onRestored }: { onRestored?: () => void }) {
     <section className="card mt-4 p-4">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-black text-white">Local backups</h3>
+        <span className="inline-flex items-center gap-1 rounded bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-bold text-cyan-300">
+          schema v{BACKUP_SCHEMA_VERSION} · app {APP_VERSION}
+        </span>
         <span className="text-[10px] text-slate-400">
-          Auto-saved on this device before every edit and every 5 minutes. Survives accidental delete.
+          Auto-saved before every edit + every 5 min. Versioned &amp; self-migrating — old backups keep working after
+          app upgrades.
         </span>
         <button className="btn-ghost ml-auto !py-1 text-[11px]" onClick={() => setOpen((v) => !v)}>
           {open ? "Hide" : `Show (${rows.length})`}
@@ -217,7 +246,10 @@ export function BackupVault({ onRestored }: { onRestored?: () => void }) {
               </button>
               <button
                 className="btn-ghost !px-2 !py-0.5"
-                onClick={() => downloadJson(`nicu-backup-${r.at.slice(0, 19)}.json`, r)}
+                title="Download a versioned backup that future app versions can read"
+                onClick={() =>
+                  downloadJson(`srh-backup-v${BACKUP_SCHEMA_VERSION}-${r.at.slice(0, 19)}.json`, wrapBackup(r.data))
+                }
               >
                 JSON
               </button>

@@ -36,6 +36,7 @@ import {
   SYSTEMS,
   type SystemKey,
 } from "@/lib/catalog";
+import { ActionChecklist } from "@/components/action-list";
 import { AdmissionEdit } from "@/components/admission-edit";
 import { DailyProgressTab } from "@/components/daily-progress";
 import {
@@ -51,11 +52,13 @@ import {
   TimelineTab,
   VitalsTab,
 } from "@/components/baby-tabs";
+import { ConsolidatedImpression } from "@/components/interpret-ui";
 import type { Clinical } from "@/lib/clinical";
 import {
   calcNutrition,
   correctedGA,
   dayOfLife,
+  fmtBP,
   fmtTime,
   gainGPerKgDay,
   hoursOfLife,
@@ -83,6 +86,7 @@ type Detail = {
     apgar1: number;
     apgar5: number;
     bloodGroup: string;
+    motherBloodGroup: string;
     inborn: boolean;
     acuity: string;
     status: string;
@@ -105,7 +109,14 @@ type Detail = {
   }[];
   vitals: Record<string, number | string | null>[];
   events: { id: number; kind: string; text: string; author: string; at: string }[];
-  tasks: { id: number; text: string; priority: string; done: boolean }[];
+  tasks: {
+    id: number;
+    text: string;
+    priority: string;
+    done: boolean;
+    doneAt: string | null;
+    doneBy: string;
+  }[];
   handovers: {
     id: number;
     shift: string;
@@ -371,6 +382,33 @@ function Overview({
   const v = d.vitals[0] ?? {};
   const { unit } = useTempUnit();
   const b = d.baby;
+  const babyLite = {
+    unit: b.unit,
+    dob: b.dob,
+    gestWeeks: b.gestWeeks,
+    gestDays: b.gestDays,
+    birthWeight: b.birthWeight,
+    currentWeight: b.currentWeight,
+  };
+  const growthSeries = [...(c.growth ?? [])].sort((x, y) => +new Date(x.at) - +new Date(y.at));
+  const growthVel =
+    growthSeries.length >= 2
+      ? (() => {
+          const a = growthSeries[growthSeries.length - 2];
+          const z = growthSeries[growthSeries.length - 1];
+          const days = Math.max(0.5, (+new Date(z.at) - +new Date(a.at)) / 86400000);
+          return gainGPerKgDay(a.weight, z.weight, days);
+        })()
+      : null;
+  const minCumPct = growthSeries.length
+    ? Math.min(...growthSeries.map((g) => ((g.weight - b.birthWeight) / b.birthWeight) * 100))
+    : 0;
+  const regained = growthSeries.some((g) => g.weight >= b.birthWeight) || b.currentWeight >= b.birthWeight;
+  const pao2Num = (() => {
+    const raw = (c.labs ?? {})["pO2"] ?? (c.labs ?? {})["PaO2"];
+    const n = raw == null ? null : Number(String(raw).replace(/[^0-9.]/g, ""));
+    return n != null && Number.isFinite(n) ? n : null;
+  })();
   return (
     <div className="grid gap-3 lg:grid-cols-3">
       <div className="lg:col-span-3">
@@ -390,6 +428,7 @@ function Overview({
             apgar1: b.apgar1,
             apgar5: b.apgar5,
             bloodGroup: b.bloodGroup,
+            motherBloodGroup: b.motherBloodGroup,
             inborn: b.inborn,
             isolation: b.isolation,
             consultant: b.consultant,
@@ -401,6 +440,20 @@ function Overview({
           onSave={patch}
         />
       </div>
+      <div className="lg:col-span-3">
+        <ConsolidatedImpression
+          baby={babyLite}
+          vitals={v}
+          labs={c.labs ?? null}
+          growth={{ velocity: growthVel, lossPct: minCumPct, regained }}
+          resp={{
+            map: (v.map as number | null) ?? null,
+            fio2: c.resp?.settings?.fio2 ?? null,
+            pao2: pao2Num,
+            silverman: c.resp?.silverman ?? null,
+          }}
+        />
+      </div>
       <Section title="Latest observations" sub={`Recorded ${relTime(v.recordedAt as string)}`}>
         <div className="grid grid-cols-3 gap-2 text-center">
           {[
@@ -408,7 +461,7 @@ function Overview({
             ["RR", v.rr, "/min"],
             ["SpO₂", v.spo2, "%"],
             ["Temp", tempOut(v.temp as number | null, unit), `°${unit}`],
-            ["MAP", v.map, "mmHg"],
+            ["BP", fmtBP(v.sbp as number | null, v.dbp as number | null, v.map as number | null), "mmHg"],
             ["CRT", v.crt, "s"],
             ["RBS", v.rbs, "mg/dL"],
             ["FiO₂", v.fio2, "%"],
@@ -426,6 +479,12 @@ function Overview({
       <Section title="Support & nutrition">
         <dl className="space-y-1.5 text-xs text-slate-300">
           <Row k="Consultant" v={d.baby.consultant || "not assigned"} />
+          {c.triage && (
+            <Row
+              k="Admission triage"
+              v={`${c.triage.label} · ${c.triage.scale} ${c.triage.score} · ${c.triage.band.toUpperCase()}`}
+            />
+          )}
           <Row
             k="Growth"
             v={`${d.baby.birthWeight} g → ${d.baby.currentWeight} g (${weightChangePct(d.baby.birthWeight, d.baby.currentWeight)}%) · velocity ${
@@ -478,13 +537,13 @@ function Overview({
         </div>
         <div className="lbl mt-4 mb-1">Plan</div>
         <p className="text-xs text-slate-300">{d.baby.clinical?.plan || "No plan documented."}</p>
-        <div className="lbl mt-4 mb-1">Open actions</div>
-        <ul className="space-y-0.5 text-xs text-slate-300">
-          {d.tasks.filter((t) => !t.done).map((t) => (
-            <li key={t.id}>• {t.text}</li>
-          ))}
-          {d.tasks.filter((t) => !t.done).length === 0 && <li className="text-slate-500">All done</li>}
-        </ul>
+        <div className="lbl mt-4 mb-1">Actions</div>
+        <ActionChecklist
+          tasks={d.tasks}
+          onToggle={async (id, done) => {
+            await api(`/api/babies/${d.baby.id}/tasks`, "PATCH", { id, done, doneBy: user });
+          }}
+        />
       </Section>
 
       <Section title="Recent handovers" sub="I-PASS records">
@@ -497,7 +556,18 @@ function Overview({
                 </span>
                 <span>{fmtTime(h.createdAt)}</span>
               </div>
-              <p className="mt-1 text-slate-200">{h.summary}</p>
+              <div className="lbl mt-1">Patient summary</div>
+              <p className="text-slate-200">{h.summary}</p>
+              {h.actions?.length > 0 && (
+                <div className="mt-2 rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-1.5">
+                  <div className="lbl mb-0.5 text-emerald-300">Action list</div>
+                  <ol className="space-y-0.5 text-[11px] text-slate-200">
+                    {h.actions.map((action, index) => (
+                      <li key={`${action}-${index}`}>{index + 1}. {action}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
             </div>
           ))}
           {d.handovers.length === 0 && <p className="text-xs text-slate-400">No handover yet.</p>}
