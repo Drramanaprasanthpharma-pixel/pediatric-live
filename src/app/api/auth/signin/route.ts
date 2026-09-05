@@ -13,7 +13,23 @@ export async function POST(req: Request) {
   if (!name || !code) {
     return NextResponse.json({ ok: false, error: "Enter your name and employee code." }, { status: 400 });
   }
-  const rows = await db.select().from(keymasters);
+  let rows;
+  try {
+    rows = await db.select().from(keymasters);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const notSetUp = /relation .* does not exist/i.test(message);
+    console.error("[auth/signin] keymasters query failed:", message);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: notSetUp
+          ? "Database isn't set up yet — the keymasters table is missing. Run the schema migration (e.g. `npx drizzle-kit push`) against your production database."
+          : "Couldn't reach the database. Check DATABASE_URL and try again.",
+      },
+      { status: 503 },
+    );
+  }
   if (rows.length === 0) {
     return NextResponse.json(
       { ok: false, error: "No keys registered yet — add the first person in the Keymaster List." },

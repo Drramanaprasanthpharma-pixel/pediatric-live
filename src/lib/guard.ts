@@ -36,7 +36,13 @@ export function unsigned() {
 export async function editorOfChecked(req: Request): Promise<string | null> {
   const name = editorOf(req);
   if (!name) return null;
-  const rows = await db.select().from(keymasters);
+  let rows;
+  try {
+    rows = await db.select().from(keymasters);
+  } catch (err) {
+    console.error("[guard] keymasters query failed:", err instanceof Error ? err.message : err);
+    return null; // fail safe: treat as unauthorized rather than crashing the request
+  }
   if (rows.length === 0) return name; // open setup phase
   const code = codeOf(req);
   if (!code) return null;
@@ -46,6 +52,11 @@ export async function editorOfChecked(req: Request): Promise<string | null> {
 }
 
 export async function hasKeys(): Promise<boolean> {
-  const rows = await db.select({ id: keymasters.id }).from(keymasters).limit(1);
-  return rows.length > 0;
+  try {
+    const rows = await db.select({ id: keymasters.id }).from(keymasters).limit(1);
+    return rows.length > 0;
+  } catch (err) {
+    console.error("[guard] hasKeys query failed:", err instanceof Error ? err.message : err);
+    return false; // fail safe: treat as no keys registered rather than crashing the request
+  }
 }
