@@ -37,7 +37,14 @@ type BoardBaby = {
   clinical: Clinical;
   updatedAt: string;
   problems: { id: number; label: string; system: string; status: string }[];
-  openTasks: { id: number; text: string; priority: string }[];
+  openTasks: {
+    id: number;
+    text: string;
+    priority: string;
+    owner: string;
+    note: string;
+    scheduledAt: string | null;
+  }[];
   lastVital: Record<string, number | string | null> | null;
   lastHandover: { shift: string; fromStaff: string; createdAt: string; acknowledgedBy: string } | null;
 };
@@ -390,7 +397,7 @@ function BabyCard({
           <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${meta.cls}`}>{meta.label}</span>
         </div>
 
-        <div className="mt-3 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+        <div className="mt-3 grid grid-cols-3 gap-1.5 sm:grid-cols-7">
           <Mini label="HR" v={v?.hr} k="hr" />
           <Mini label="RR" v={v?.rr} k="rr" />
           <Mini label="SpO₂" v={v?.spo2} k="spo2" unit="%" />
@@ -400,7 +407,13 @@ function BabyCard({
             k="temp"
             rawC={v?.temp as number | null}
           />
-          <Mini label="BP" v={fmtBP(v?.sbp, v?.dbp, v?.map)} k="map" rawC={v?.map as number | null} />
+          <Mini
+            label="BP sbp/dbp (map)"
+            v={fmtBP(v?.sbp, v?.dbp, v?.map)}
+            k="map"
+            rawC={v?.map as number | null}
+            wide
+          />
           <Mini label="RBS" v={v?.rbs} k="rbs" />
         </div>
 
@@ -472,6 +485,10 @@ function BabyCard({
           </div>
           <ActionChecklist
             tasks={b.openTasks.map((t) => ({ ...t, done: false, doneAt: null, doneBy: "" }))}
+            onSchedule={async (taskId, iso) => {
+              await api(`/api/babies/${b.id}/tasks`, "PATCH", { id: taskId, scheduledAt: iso });
+              onActionToggled?.();
+            }}
             showDone={false}
             emptyLabel=""
             onToggle={async (id, done) => {
@@ -502,12 +519,14 @@ function Mini({
   k,
   unit = "",
   rawC,
+  wide = false,
 }: {
   label: string;
   v: number | string | null | undefined;
   k: string;
   unit?: string;
   rawC?: number | null;
+  wide?: boolean;
 }) {
   const isText = typeof v === "string";
   const num = isText ? Number(v) : v;
@@ -521,9 +540,12 @@ function Mini({
         : "text-slate-100 border-white/10";
   const display = isText ? (v as string) : (num ?? "—");
   return (
-    <div className={`rounded-lg border bg-slate-900/50 px-1.5 py-1 text-center ${cls}`}>
-      <div className="text-[9px] uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="text-sm font-bold tabular-nums">
+    <div
+      className={`rounded-lg border bg-slate-900/50 px-1.5 py-1 text-center ${wide ? "col-span-2" : ""} ${cls}`}
+      title={wide ? "systolic/diastolic (mean)" : undefined}
+    >
+      <div className="truncate text-[9px] uppercase tracking-wide text-slate-400">{label}</div>
+      <div className={`font-bold tabular-nums ${wide ? "text-[13px] leading-tight" : "text-sm"}`}>
         {display}
         <span className="text-[9px]">{unit}</span>
       </div>

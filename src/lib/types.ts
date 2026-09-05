@@ -56,7 +56,7 @@ export type Detail = {
     toStaff: string;
     illness: string;
     summary: string;
-    actions: string[];
+    actions: (string | Record<string, unknown>)[];
     contingency: string[];
     synthesis: string;
     acknowledgedBy: string;

@@ -188,7 +188,7 @@ export async function POST() {
         ["Metabolic / Endocrine", "Metabolic bone disease of prematurity"],
         ["Gastro / Nutrition", "Slow weight gain (<15 g/kg/day)"],
       ],
-      vitals: { hr: 148, rr: 46, spo2: 96, temp: 36.8, map: 38, crt: 2, rbs: 82, fio2: 25, painScore: 1, urineMlKgHr: 2.6 },
+      vitals: { hr: 148, rr: 46, spo2: 96, temp: 36.8, sbp: 64, dbp: 40, map: 48, crt: 2, rbs: 82, fio2: 25, painScore: 1, urineMlKgHr: 2.6 },
       tasks: ["Trial off CPAP after 2 h", "Increase feeds by 20 ml/kg/day if tolerating", "Repeat ALP & phosphate"],
     },
     {
@@ -231,7 +231,7 @@ export async function POST() {
         ["Growth / Prematurity", "Late preterm (34–36+6 weeks)"],
         ["Gastro / Nutrition", "Oral feeding immaturity / poor suck"],
       ],
-      vitals: { hr: 138, rr: 44, spo2: 98, temp: 37.1, map: 44, crt: 2, rbs: 76, fio2: 21, urineMlKgHr: 3.1 },
+      vitals: { hr: 138, rr: 44, spo2: 98, temp: 37.1, sbp: 72, dbp: 45, map: 54, crt: 2, rbs: 76, fio2: 21, urineMlKgHr: 3.1 },
       tasks: ["Serum bilirubin at 8 am", "Keep exchange set ready", "Discharge teaching if TSB falls"],
     },
     {
@@ -280,7 +280,7 @@ export async function POST() {
         ["Growth / Prematurity", "Moderate preterm (32–33+6 weeks)"],
         ["Haematology / Bilirubin", "Anaemia of prematurity"],
       ],
-      vitals: { hr: 132, rr: 42, spo2: 99, temp: 36.9, map: 46, crt: 2, rbs: 84, fio2: 21, urineMlKgHr: 3.4 },
+      vitals: { hr: 132, rr: 42, spo2: 99, temp: 36.9, sbp: 78, dbp: 48, map: 58, crt: 2, rbs: 84, fio2: 21, urineMlKgHr: 3.4 },
       tasks: ["Book discharge teaching session", "High-risk follow-up appointment", "Final weight & HC"],
     },
   ];
@@ -460,6 +460,20 @@ export async function POST() {
       text: `Admitted to ${e.unit.toUpperCase()}`,
       author: "Admitting team",
     });
+    // Initial observation set with a complete BP so every tile shows sbp/dbp (map).
+    const vitByUnit: Record<
+      string,
+      { hr: number; rr: number; spo2: number; temp: number; sbp: number; dbp: number; map: number; crt: number; rbs: number }
+    > = {
+      picu: { hr: 128, rr: 26, spo2: 95, temp: 37.4, sbp: 86, dbp: 52, map: 63, crt: 2, rbs: 112 },
+      stepdown: { hr: 110, rr: 22, spo2: 97, temp: 37.8, sbp: 96, dbp: 58, map: 71, crt: 2, rbs: 98 },
+      postnatal: { hr: 136, rr: 42, spo2: 98, temp: 37.0, sbp: 74, dbp: 46, map: 55, crt: 2, rbs: 88 },
+      paeds: { hr: 118, rr: 30, spo2: 96, temp: 38.4, sbp: 92, dbp: 55, map: 67, crt: 2, rbs: 104 },
+    };
+    const vv = vitByUnit[e.unit];
+    if (vv) {
+      await db.insert(vitals).values({ babyId: row.id, recordedBy: "Admitting nurse", ...vv });
+    }
   }
 
   return NextResponse.json({ ok: true, count: seedBabies.length + extra.length });

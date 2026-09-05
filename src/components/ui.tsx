@@ -1,6 +1,20 @@
 "use client";
 
-import { Check, Moon, Sun } from "lucide-react";
+import {
+  BookOpen,
+  CalendarDays,
+  Check,
+  GraduationCap,
+  KeyRound,
+  LayoutGrid,
+  Lock as LockIcon,
+  Moon,
+  Newspaper,
+  Printer,
+  Sun,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -492,14 +506,15 @@ export function TopBar({
         className="relative border-t border-white/10 bg-slate-950/70"
       >
         <div className="mx-auto flex max-w-[1600px] gap-1 overflow-x-auto whitespace-nowrap px-3 py-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          <MobileNavLink href="/" icon="🏥">Unit board</MobileNavLink>
-          <MobileNavLink href="/admit" icon="➕">New admission</MobileNavLink>
-          <MobileNavLink href="/consultants" icon="👨‍⚕️">By consultant</MobileNavLink>
-          <MobileNavLink href="/handover" icon="🖨️">Shift sheet</MobileNavLink>
-          <MobileNavLink href="/reference" icon="📖">Parameters</MobileNavLink>
-          <MobileNavLink href="/learning" icon="🎓">Learning space</MobileNavLink>
-          <MobileNavLink href="/updates" icon="📰">Recent updates</MobileNavLink>
-          <MobileNavLink href="/roster" icon="📅">Duty roster</MobileNavLink>
+          <MobileNavLink href="/" icon={<LayoutGrid size={13} />}>Unit board</MobileNavLink>
+          <MobileNavLink href="/admit" icon={<UserPlus size={13} />}>New admission</MobileNavLink>
+          <MobileNavLink href="/consultants" icon={<Users size={13} />}>By consultant</MobileNavLink>
+          <MobileNavLink href="/handover" icon={<Printer size={13} />}>Shift sheet</MobileNavLink>
+          <MobileNavLink href="/reference" icon={<BookOpen size={13} />}>Parameters</MobileNavLink>
+          <MobileNavLink href="/learning" icon={<GraduationCap size={13} />}>Learning space</MobileNavLink>
+          <MobileNavLink href="/updates" icon={<Newspaper size={13} />}>Recent updates</MobileNavLink>
+          <MobileNavLink href="/roster" icon={<CalendarDays size={13} />}>Duty roster</MobileNavLink>
+          <MobileNavLink href="/keymasters" icon={<KeyRound size={13} />}>Keymaster List</MobileNavLink>
         </div>
         {/* soft edge fades hint at scrollable content on small screens */}
         <span className="pointer-events-none absolute inset-y-0 left-0 w-4 bg-gradient-to-r from-slate-950/90 to-transparent md:hidden" />
@@ -530,7 +545,7 @@ function MobileNavLink({
   children,
 }: {
   href: string;
-  icon?: string;
+  icon?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -552,27 +567,93 @@ function MobileNavLink({
   );
 }
 
+/* ---------- Keymaster session ---------- */
+
+export type Session = { name: string; code: string; role: string; unit: string };
+
+const SESSION_KEY = "neo_session";
+
+export function getSession(): Session | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as Session;
+    return s && s.name ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setSession(s: Session | null) {
+  if (typeof window === "undefined") return;
+  if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+  else localStorage.removeItem(SESSION_KEY);
+  window.dispatchEvent(new Event("neo:session"));
+  window.dispatchEvent(new Event("neo:user"));
+}
+
+/** Module cache of "does the Keymaster List have any keys yet". */
+let cachedHasKeys: boolean | null = null;
+export function peekHasKeys(): boolean | null {
+  return cachedHasKeys;
+}
+export async function refreshHasKeys(): Promise<boolean> {
+  try {
+    const r = await fetch("/api/keymasters?meta=1", { cache: "no-store" });
+    const j = await r.json();
+    cachedHasKeys = Boolean(j.hasKeys);
+    window.dispatchEvent(new Event("neo:keys"));
+    return cachedHasKeys;
+  } catch {
+    return cachedHasKeys ?? false;
+  }
+}
+
+/** Signed-in identity; name is empty when nobody is signed in. */
 export function useUser() {
-  const [name, setName] = useState("");
+  const [session, setS] = useState<Session | null>(() => getSession());
   useEffect(() => {
-    setName(localStorage.getItem("neo_user") || "");
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === "neo_user") setName(e.newValue ?? "");
-    };
-    const onCustom = () => setName(localStorage.getItem("neo_user") || "");
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("neo:user", onCustom);
+    const sync = () => setS(getSession());
+    window.addEventListener("neo:session", sync);
+    window.addEventListener("storage", sync);
+    refreshHasKeys();
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("neo:user", onCustom);
+      window.removeEventListener("neo:session", sync);
+      window.removeEventListener("storage", sync);
     };
   }, []);
-  const save = (n: string) => {
-    localStorage.setItem("neo_user", n);
-    setName(n);
-    window.dispatchEvent(new Event("neo:user"));
+  return {
+    name: session?.name ?? "",
+    code: session?.code ?? "",
+    role: session?.role ?? "",
+    unit: session?.unit ?? "",
+    signedIn: !!session,
+    signIn: (s: Session) => setSession(s),
+    signOut: () => setSession(null),
+    /** legacy no-op kept for call-site compatibility */
+    save: (_n: string) => undefined,
   };
-  return { name, save };
+}
+
+/** Sign in against the Keymaster List (employee code = password). */
+export async function signIn(name: string, code: string): Promise<{ ok: boolean; error?: string; session?: Session }> {
+  try {
+    const r = await fetch("/api/auth/signin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, code }),
+    });
+    const j = await r.json();
+    if (r.ok && j.ok) {
+      const session: Session = { name: j.name, code, role: j.role ?? "", unit: j.unit ?? "" };
+      setSession(session);
+      return { ok: true, session };
+    }
+    return { ok: false, error: j.error ?? "Sign-in failed." };
+  } catch {
+    return { ok: false, error: "Network error — try again." };
+  }
 }
 
 /**
@@ -584,47 +665,139 @@ export function useTempUnit(): { unit: "F" } {
   return { unit: "F" };
 }
 
-/** Compact staff name entry shown in the top bar — signs every entry on every page. */
+/** Sign-in control in the top bar: badge when signed in, button + modal otherwise. */
 function StaffNameInput() {
-  const { name, save } = useUser();
+  const user = useUser();
+  const [open, setOpen] = useState(false);
   const [flash, setFlash] = useState(false);
   useEffect(() => {
     const f = () => {
       setFlash(true);
-      const t = setTimeout(() => setFlash(false), 1400);
-      return () => clearTimeout(t);
+      setTimeout(() => setFlash(false), 1400);
     };
     window.addEventListener("neo:lockflash", f);
     return () => window.removeEventListener("neo:lockflash", f);
   }, []);
-  const locked = !name.trim();
   return (
-    <div
-      className={`flex items-center gap-1.5 rounded-xl border px-2 py-1 transition ${
-        flash
-          ? "border-amber-400 ring-2 ring-amber-400/60"
-          : locked
-            ? "border-amber-400/50 bg-amber-400/10"
-            : "border-emerald-400/40 bg-emerald-400/10"
-      }`}
-      title={
-        locked
-          ? "View-only — enter your name to unlock editing"
-          : `Signed in as ${name} — edits autosave under this name`
-      }
-    >
-      <span aria-hidden className="text-[11px]">
-        {locked ? "🔒" : "✍️"}
-      </span>
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Signed as</span>
-      <input
-        value={name}
-        onChange={(e) => save(e.target.value)}
-        placeholder={locked ? "Sign to edit" : "Your name"}
-        className="w-24 bg-transparent text-xs font-semibold text-white outline-none placeholder:text-slate-500 sm:w-32"
-        title="Enter your name — every entry you make is signed with it"
-      />
-      {!locked && <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-300">editing</span>}
+    <>
+      {user.signedIn ? (
+        <div
+          className={`flex items-center gap-1.5 rounded-xl border px-2 py-1 transition ${
+            flash ? "border-amber-400 ring-2 ring-amber-400/60" : "border-emerald-400/40 bg-emerald-400/10"
+          }`}
+          title={`Signed in as ${user.name} — employee code verified`}
+        >
+          <span aria-hidden className="text-[11px]">✍️</span>
+          <span className="max-w-[9rem] truncate text-xs font-semibold text-white">{user.name}</span>
+          {user.role && (
+            <span className="hidden rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-300 sm:inline">
+              {user.role}
+            </span>
+          )}
+          <button
+            onClick={user.signOut}
+            className="ml-1 text-[10px] font-bold uppercase tracking-wide text-slate-400 hover:text-rose-300"
+            title="Sign out (returns to view-only)"
+          >
+            sign out
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setOpen(true)}
+          className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-bold transition ${
+            flash ? "border-amber-400 ring-2 ring-amber-400/60" : "border-amber-400/50 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20"
+          }`}
+          title="Sign in with your employee code to unlock editing"
+        >
+          <LockIcon size={12} strokeWidth={2.5} /> Sign in to edit
+        </button>
+      )}
+      {open && <SignInModal onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+/** Name + employee-code sign-in dialog backed by the Keymaster List. */
+export function SignInModal({ onClose }: { onClose: () => void }) {
+  const [name, setName] = useState(() => localStorage.getItem("neo_last_name") || "");
+  const [code, setCode] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [names, setNames] = useState<string[]>([]);
+  useEffect(() => {
+    fetch("/api/keymasters", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => setNames((j.rows ?? []).map((r: { name: string }) => r.name)))
+      .catch(() => undefined);
+  }, []);
+  const submit = async () => {
+    setBusy(true);
+    setErr("");
+    const res = await signIn(name.trim(), code.trim());
+    setBusy(false);
+    if (res.ok) {
+      localStorage.setItem("neo_last_name", name.trim());
+      onClose();
+    } else {
+      setErr(res.error ?? "Sign-in failed.");
+    }
+  };
+  return (
+    <div className="fixed inset-0 z-[90] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <div className="card w-full max-w-sm p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-lg border border-cyan-400/40 bg-cyan-400/10 text-cyan-300">
+            <KeyRound size={15} />
+          </span>
+          <div>
+            <h2 className="text-sm font-black text-white">Sign in to edit</h2>
+            <p className="text-[10px] text-slate-400">Your employee code is the password.</p>
+          </div>
+          <button onClick={onClose} className="ml-auto text-slate-400 hover:text-white" aria-label="Close">
+            ✕
+          </button>
+        </div>
+        <label className="lbl mb-1 block">Name on the Keymaster List</label>
+        <input
+          className="inp mb-2"
+          list="keymaster-names"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Start typing your name…"
+          autoFocus
+        />
+        <datalist id="keymaster-names">
+          {names.map((n) => (
+            <option key={n} value={n} />
+          ))}
+        </datalist>
+        <label className="lbl mb-1 block">Employee code</label>
+        <input
+          className="inp mb-2"
+          type="password"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="••••••"
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+        />
+        {err && <p className="mb-2 rounded-lg border border-rose-400/40 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200">{err}</p>}
+        <div className="flex justify-end gap-2">
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn-primary" onClick={submit} disabled={busy || !name.trim() || !code.trim()}>
+            {busy ? "Checking…" : "Sign in"}
+          </button>
+        </div>
+        <p className="mt-3 text-[10px] text-slate-500">
+          Not on the list? Ask a Keymaster to add you, or register the first key in{" "}
+          <Link href="/keymasters" className="font-bold text-cyan-300 underline">
+            Keymaster List
+          </Link>
+          .
+        </p>
+      </div>
     </div>
   );
 }
@@ -664,26 +837,28 @@ export function usePoll<T>(url: string, ms = 4000) {
 
 /** Current signed-in editor name (empty = view-only). */
 export function getUserName(): string {
-  if (typeof window === "undefined") return "";
-  return (localStorage.getItem("neo_user") || "").trim();
+  return getSession()?.name ?? "";
 }
 
-/** True while no name is signed in — the whole app is then read-only. */
+/**
+ * True while editing is locked: keys exist but nobody is signed in.
+ * While the Keymaster List is still empty the unit is in open setup mode.
+ */
 export function useLocked(): boolean {
-  const [locked, setLocked] = useState(() =>
-    typeof window === "undefined" ? true : !getUserName(),
-  );
+  const user = useUser();
+  const [hasKeys, setHasKeys] = useState<boolean | null>(() => peekHasKeys());
   useEffect(() => {
-    const sync = () => setLocked(!getUserName());
-    sync();
-    window.addEventListener("neo:user", sync);
-    window.addEventListener("storage", sync);
+    const sync = () => setHasKeys(peekHasKeys());
+    refreshHasKeys();
+    window.addEventListener("neo:keys", sync);
+    window.addEventListener("neo:session", sync);
     return () => {
-      window.removeEventListener("neo:user", sync);
-      window.removeEventListener("storage", sync);
+      window.removeEventListener("neo:keys", sync);
+      window.removeEventListener("neo:session", sync);
     };
   }, []);
-  return locked;
+  if (user.signedIn) return false;
+  return hasKeys !== false;
 }
 
 /** Amber strip shown while the session is view-only. */
@@ -696,10 +871,14 @@ export function LockBanner() {
   return (
     <div className="no-print relative z-40 border-b border-amber-400/40 bg-amber-500/15 backdrop-blur">
       <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-2 px-4 py-2 text-[11px] font-semibold text-amber-200">
-        <span aria-hidden>🔒</span>
+        <LockIcon size={12} strokeWidth={2.5} aria-hidden />
         <span>
-          <b>View-only mode.</b> Type your name in <b>“Signed as”</b> (top bar) to unlock editing, admitting and
-          autosave. Browsing stays open to everyone.
+          <b>View-only mode.</b> Sign in with your <b>employee code</b> (top-right) to unlock editing, admitting and
+          autosave. Browsing stays open to everyone. Keys are managed in the{" "}
+          <Link href="/keymasters" className="font-bold underline">
+            Keymaster List
+          </Link>
+          .
         </span>
       </div>
     </div>
@@ -708,10 +887,11 @@ export function LockBanner() {
 
 export async function api(url: string, method: string, body?: unknown) {
   if (typeof window !== "undefined" && method !== "GET") {
-    const editor = getUserName();
-    if (!editor) {
+    const session = getSession();
+    const openSetup = peekHasKeys() === false;
+    if (!session && !openSetup) {
       window.dispatchEvent(
-        new CustomEvent("neo:error", { detail: "🔒 View-only — sign your name (top bar) to save changes" }),
+        new CustomEvent("neo:error", { detail: "🔒 View-only — sign in with your employee code to save changes" }),
       );
       window.dispatchEvent(new Event("neo:lockflash"));
       return { error: "view-only" };
@@ -724,13 +904,17 @@ export async function api(url: string, method: string, body?: unknown) {
     }
   }
   try {
+    const session = typeof window !== "undefined" ? getSession() : null;
     const r = await fetch(url, {
       method,
       cache: "no-store",
       headers: {
         "Content-Type": "application/json",
         ...(typeof window !== "undefined" && method !== "GET"
-          ? { "x-editor": getUserName() }
+          ? {
+              "x-editor": session?.name ?? getUserName(),
+              ...(session?.code ? { "x-code": session.code } : {}),
+            }
           : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -743,9 +927,12 @@ export async function api(url: string, method: string, body?: unknown) {
       }
     } else if (r.status === 401) {
       window.dispatchEvent(
-        new CustomEvent("neo:error", { detail: "🔒 View-only — sign your name (top bar) to save changes" }),
+        new CustomEvent("neo:error", {
+          detail: (j && j.error) || "🔒 View-only — sign in with your employee code to save changes",
+        }),
       );
       window.dispatchEvent(new Event("neo:lockflash"));
+      refreshHasKeys();
     } else {
       window.dispatchEvent(new CustomEvent("neo:error", { detail: "Cloud save failed — retry" }));
     }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { babies, events, problems } from "@/db/schema";
 import { desc } from "drizzle-orm";
-import { editorOf, unsigned } from "@/lib/guard";
+import { editorOfChecked, unsigned } from "@/lib/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  if (!editorOf(req)) return unsigned();
+  if (!(await editorOfChecked(req))) return unsigned();
   const body = await req.json();
   const initialProblems: { system: string; label: string }[] = body.problems ?? [];
   const [row] = await db

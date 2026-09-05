@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { babies, events, handovers, problems, tasks, vitals } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { editorOf, unsigned } from "@/lib/guard";
+import { editorOfChecked, unsigned } from "@/lib/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,7 @@ async function log(babyId: number, kind: string, text: string, author = "Team") 
 }
 
 export async function POST(req: Request, ctx: Ctx) {
-  if (!editorOf(req)) return unsigned();
+  if (!(await editorOfChecked(req))) return unsigned();
   const { id: rawId, resource } = await ctx.params;
   const id = Number(rawId);
   const body = await req.json();
@@ -85,30 +85,37 @@ export async function POST(req: Request, ctx: Ctx) {
       return NextResponse.json({ row });
     }
     case "tasks": {
-      const items: string[] = body.items ?? [body.text];
+      // items may be plain strings or rich objects {text, priority, owner, scheduledAt, note}
+      const rawItems: unknown[] = Array.isArray(body.items) ? body.items : [body.text];
+      const items = rawItems
+        .map((t) => (typeof t === "string" ? { text: t } : (t as Record<string, unknown>)))
+        .filter((t) => t && String(t.text ?? "").trim());
       const rows = await db
         .insert(tasks)
         .values(
-          items.filter(Boolean).map((t) => ({
+          items.map((t) => ({
             babyId: id,
-            text: t,
-            priority: body.priority ?? "today",
-            owner: body.owner ?? "Team",
+            text: String(t.text).trim(),
+            priority: String(t.priority ?? body.priority ?? "today"),
+            owner: String(t.owner ?? body.owner ?? "Team"),
+            scheduledAt: t.scheduledAt ? new Date(String(t.scheduledAt)) : null,
+            note: String(t.note ?? ""),
           })),
         )
         .returning();
       return NextResponse.json({ rows });
     }
     case "handovers": {
-      const actionItems = Array.isArray(body.actions)
-        ? [
-            ...new Set(
-              (body.actions as unknown[])
-                .map((a) => String(a).trim())
-                .filter(Boolean),
-            ),
-          ]
-        : [];
+      const rawActions: unknown[] = Array.isArray(body.actions) ? body.actions : [];
+      const seenText = new Set<string>();
+      const actionItems: unknown[] = [];
+      for (const a of rawActions) {
+        const t0 = typeof a === "string" ? a : String((a as Record<string, unknown>).text ?? "");
+        const text = t0.trim();
+        if (!text || seenText.has(text.toLowerCase())) continue;
+        seenText.add(text.toLowerCase());
+        actionItems.push(typeof a === "string" ? text : { ...(a as Record<string, unknown>), text });
+      }
       const [row] = await db
         .insert(handovers)
         .values({
@@ -129,14 +136,19 @@ export async function POST(req: Request, ctx: Ctx) {
         const existingOpen = new Set(
           currentTasks.filter((t) => !t.done).map((t) => t.text.trim().toLowerCase()),
         );
-        const newTasks = actionItems.filter((t) => !existingOpen.has(t.toLowerCase()));
+        const rich = actionItems
+          .map((a) => (typeof a === "string" ? { text: a } : (a as Record<string, unknown>)))
+          .filter((a) => String(a.text ?? "").trim());
+        const newTasks = rich.filter((a) => !existingOpen.has(String(a.text).trim().toLowerCase()));
         if (newTasks.length) {
           await db.insert(tasks).values(
-            newTasks.map((t) => ({
+            newTasks.map((a) => ({
               babyId: id,
-              text: t,
-              priority: "today",
-              owner: body.toStaff || "Team",
+              text: String(a.text).trim(),
+              priority: String(a.priority ?? "today"),
+              owner: String(a.owner || body.toStaff || "Team"),
+              scheduledAt: a.scheduledAt ? new Date(String(a.scheduledAt)) : null,
+              note: String(a.note ?? ""),
             })),
           );
         }
@@ -155,7 +167,7 @@ export async function POST(req: Request, ctx: Ctx) {
 }
 
 export async function PATCH(req: Request, ctx: Ctx) {
-  if (!editorOf(req)) return unsigned();
+  if (!(await editorOfChecked(req))) return unsigned();
   const { id: rawId, resource } = await ctx.params;
   const id = Number(rawId);
   const body = await req.json();
@@ -177,11 +189,16 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const patch: Record<string, unknown> = {};
     if (body.text !== undefined) patch.text = String(body.text);
     if (body.priority !== undefined) patch.priority = String(body.priority);
+    if (body.owner !== undefined) patch.owner = String(body.owner);
+    if (body.note !== undefined) patch.note = String(body.note);
+    if (body.scheduledAt !== undefined) {
+      patch.scheduledAt = body.scheduledAt ? new Date(String(body.scheduledAt)) : null;
+    }
     if (body.done !== undefined) {
       const done = Boolean(body.done);
       patch.done = done;
       patch.doneAt = done ? new Date() : null;
-      patch.doneBy = done ? String(body.doneBy ?? editorOf(req) ?? "") : "";
+      patch.doneBy = done ? String(body.doneBy ?? (await editorOfChecked(req)) ?? "") : "";
     }
     const [row] = await db.update(tasks).set(patch).where(eq(tasks.id, body.id)).returning();
     return NextResponse.json({ row });
@@ -199,7 +216,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
 }
 
 export async function DELETE(req: Request, ctx: Ctx) {
-  if (!editorOf(req)) return unsigned();
+  if (!(await editorOfChecked(req))) return unsigned();
   const { resource } = await ctx.params;
   const { searchParams } = new URL(req.url);
   const rowId = Number(searchParams.get("rowId"));

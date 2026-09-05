@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { recentUpdates } from "@/db/schema";
 import { desc, eq, gte, inArray } from "drizzle-orm";
-import { editorOf, unsigned } from "@/lib/guard";
+import { editorOfChecked, unsigned } from "@/lib/guard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -222,7 +222,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const editor = editorOf(req);
+  const editor = await editorOfChecked(req);
   if (!editor) return unsigned();
   const b = await req.json();
   const [row] = await db
@@ -241,7 +241,7 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const editor = editorOf(req);
+  const editor = await editorOfChecked(req);
   if (!editor) return unsigned();
   const id = Number(new URL(req.url).searchParams.get("id"));
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });

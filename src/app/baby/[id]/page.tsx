@@ -124,7 +124,7 @@ type Detail = {
     toStaff: string;
     illness: string;
     summary: string;
-    actions: string[];
+    actions: (string | Record<string, unknown>)[];
     contingency: string[];
     synthesis: string;
     acknowledgedBy: string;
@@ -153,7 +153,7 @@ export default function BabyPage({ params }: { params: Promise<{ id: string }> }
   const router = useRouter();
   const { data, reload } = usePoll<Detail>(`/api/babies/${id}`, 4000);
   const [tab, setTab] = useState<(typeof TABS)[number]>("Overview");
-  const { name, save } = useUser();
+  const { name, role, signedIn } = useUser();
   const [consultant, setConsultant] = useState<string | undefined>(undefined);
   const [insurance, setInsurance] = useState<string | undefined>(undefined);
   const [insuranceName, setInsuranceName] = useState<string | undefined>(undefined);
@@ -264,12 +264,17 @@ export default function BabyPage({ params }: { params: Promise<{ id: string }> }
                   </button>
                 </div>
               </div>
-              <input
-                className="inp w-full text-xs"
-                placeholder="Your name (signs entries)"
-                value={name}
-                onChange={(e) => save(e.target.value)}
-              />
+              <div
+                className={`flex w-full items-center gap-1.5 rounded-xl border px-2 py-1.5 text-[11px] font-semibold ${
+                  signedIn
+                    ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
+                    : "border-amber-400/40 bg-amber-400/10 text-amber-200"
+                }`}
+                title={signedIn ? "Entries are signed with your verified name" : "Sign in (top-right) to sign entries"}
+              >
+                <span aria-hidden>{signedIn ? "✍️" : "🔒"}</span>
+                <span className="truncate">{signedIn ? `${name}${role ? ` · ${role}` : ""}` : "View-only — sign in to edit"}</span>
+              </div>
               <div className="w-full">
                 <div className="lbl mb-1">Insurance</div>
                 <div className="flex gap-1.5">
@@ -461,7 +466,7 @@ function Overview({
             ["RR", v.rr, "/min"],
             ["SpO₂", v.spo2, "%"],
             ["Temp", tempOut(v.temp as number | null, unit), `°${unit}`],
-            ["BP", fmtBP(v.sbp as number | null, v.dbp as number | null, v.map as number | null), "mmHg"],
+            ["BP sbp/dbp (map)", fmtBP(v.sbp as number | null, v.dbp as number | null, v.map as number | null), ""],
             ["CRT", v.crt, "s"],
             ["RBS", v.rbs, "mg/dL"],
             ["FiO₂", v.fio2, "%"],
@@ -540,8 +545,11 @@ function Overview({
         <div className="lbl mt-4 mb-1">Actions</div>
         <ActionChecklist
           tasks={d.tasks}
-          onToggle={async (id, done) => {
-            await api(`/api/babies/${d.baby.id}/tasks`, "PATCH", { id, done, doneBy: user });
+          onToggle={async (taskId, done) => {
+            await api(`/api/babies/${d.baby.id}/tasks`, "PATCH", { id: taskId, done, doneBy: user });
+          }}
+          onSchedule={async (taskId, iso) => {
+            await api(`/api/babies/${d.baby.id}/tasks`, "PATCH", { id: taskId, scheduledAt: iso });
           }}
         />
       </Section>
@@ -562,9 +570,39 @@ function Overview({
                 <div className="mt-2 rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-1.5">
                   <div className="lbl mb-0.5 text-emerald-300">Action list</div>
                   <ol className="space-y-0.5 text-[11px] text-slate-200">
-                    {h.actions.map((action, index) => (
-                      <li key={`${action}-${index}`}>{index + 1}. {action}</li>
-                    ))}
+                    {h.actions.map((raw, index) => {
+                      const a = typeof raw === "string" ? { text: raw } : (raw as Record<string, unknown>);
+                      const text = String(a.text ?? "").trim();
+                      if (!text) return null;
+                      const sched = a.scheduledAt ? String(a.scheduledAt) : null;
+                      const task = d.tasks.find((t) => t.text.trim().toLowerCase() === text.toLowerCase());
+                      return (
+                        <li key={`${text}-${index}`} className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-black text-emerald-300">{index + 1}.</span>
+                          <span className={task?.done ? "text-slate-400 line-through" : ""}>{text}</span>
+                          {sched && (
+                            <span className="rounded border border-cyan-400/40 bg-cyan-400/10 px-1 py-px text-[9px] font-bold text-cyan-200">
+                              due {fmtTime(sched)}
+                            </span>
+                          )}
+                          {(() => {
+                            const prio = String(a.priority ?? "");
+                            if (!prio || prio === "today") return null;
+                            return (
+                              <span className="rounded border border-amber-400/40 bg-amber-500/15 px-1 py-px text-[9px] font-bold text-amber-200">
+                                {prio.toUpperCase()}
+                              </span>
+                            );
+                          })()}
+                          {task?.done && task.doneAt && (
+                            <span className="text-[9px] text-emerald-300">
+                              ✓ {fmtTime(task.doneAt)}
+                              {task.doneBy ? ` · ${task.doneBy}` : ""}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ol>
                 </div>
               )}

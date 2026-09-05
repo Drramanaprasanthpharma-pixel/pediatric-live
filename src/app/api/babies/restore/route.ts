@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { babies, events, handovers, problems, tasks, vitals } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { editorOf, unsigned } from "@/lib/guard";
+import { editorOfChecked, unsigned } from "@/lib/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -153,7 +153,7 @@ async function insertSnapshot(snap: Snap, labelSuffix = "") {
 }
 
 export async function POST(req: Request) {
-  if (!editorOf(req)) return unsigned();
+  if (!(await editorOfChecked(req))) return unsigned();
   const body = await req.json();
   const mode = body.mode === "reactivate" ? "reactivate" : "new";
   const snap = (body.snapshot ?? body) as Snap;

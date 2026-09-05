@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { oncall } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
-import { editorOf, unsigned } from "@/lib/guard";
+import { editorOfChecked, unsigned } from "@/lib/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const editor = editorOf(req);
+  const editor = await editorOfChecked(req);
   if (!editor) return unsigned();
   const body = await req.json();
   const day: string = body.day || new Date().toISOString().slice(0, 10);

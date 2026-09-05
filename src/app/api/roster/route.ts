@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { roster } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { editorOf, unsigned } from "@/lib/guard";
+import { editorOfChecked, unsigned } from "@/lib/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const editor = editorOf(req);
+  const editor = await editorOfChecked(req);
   if (!editor) return unsigned();
   const body = await req.json();
   const month: string = body.month;
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const editor = editorOf(req);
+  const editor = await editorOfChecked(req);
   if (!editor) return unsigned();
   const month = new URL(req.url).searchParams.get("month");
   if (!month) return NextResponse.json({ error: "month required" }, { status: 400 });

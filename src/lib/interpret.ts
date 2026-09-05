@@ -48,9 +48,17 @@ const RR_RANGE: Record<AgeBand, [number, number]> = {
   adol: [12, 20],
 };
 
+/**
+ * 5th-centile systolic BP. Preterms use a gestation-based threshold
+ * (≈ PMA weeks + 10, clamped 35–55); term neonates & infants use PALS < 60.
+ */
 export function hypotensionSbp(b: BabyLite): number {
-  const { band, years } = ageBand(b);
-  if (band === "neonate" || band === "infant") return 60;
+  const { band, pmaWeeks, years } = ageBand(b);
+  if (band === "neonate") {
+    if (b.gestWeeks < 37) return Math.min(55, Math.max(35, Math.round(pmaWeeks) + 10));
+    return 60;
+  }
+  if (band === "infant") return 60;
   if (band === "adol") return 90;
   return 70 + 2 * Math.max(1, Math.floor(years));
 }
@@ -90,9 +98,16 @@ export function interpretVitals(b: BabyLite, v: VitalsInput): Flag[] {
     else if (v.rr > hi) f.push({ key: "tachyp", label: "Tachypnoea", sev: "warn", note: `RR ${v.rr} > ${hi}` });
   }
   if (v.spo2 != null) {
-    const crit = band === "neonate" ? 90 : 92;
-    if (v.spo2 < crit) f.push({ key: "hypox", label: "Hypoxaemia", sev: "crit", note: `SpO₂ ${v.spo2}% < ${crit}%` });
-    else if (band === "neonate" && v.spo2 < 95) f.push({ key: "spo2", label: "SpO₂ below term target", sev: "warn", note: `${v.spo2}%` });
+    // Preterms are targeted 90–95% (avoid hyperoxia/ROP); term & older: ≥ 94%.
+    const preterm = band === "neonate" && b.gestWeeks < 37;
+    if (preterm) {
+      if (v.spo2 < 88) f.push({ key: "hypox", label: "Hypoxaemia", sev: "crit", note: `SpO₂ ${v.spo2}% < 88%` });
+      else if (v.spo2 < 90) f.push({ key: "spo2", label: "SpO₂ below preterm target", sev: "warn", note: `${v.spo2}% < 90%` });
+      else if (v.spo2 > 95) f.push({ key: "spo2", label: "SpO₂ above preterm target — hyperoxia risk", sev: "warn", note: `${v.spo2}% > 95%` });
+    } else {
+      if (v.spo2 < 90) f.push({ key: "hypox", label: "Hypoxaemia", sev: "crit", note: `SpO₂ ${v.spo2}% < 90%` });
+      else if (v.spo2 < 94) f.push({ key: "spo2", label: "SpO₂ below target", sev: "warn", note: `${v.spo2}% < 94%` });
+    }
   }
   if (v.temp != null) {
     if (v.temp < 32) f.push({ key: "hypotherm", label: "Severe hypothermia", sev: "crit", note: `${v.temp} °C < 32` });
@@ -192,9 +207,11 @@ export function fentonBand(gaWeeks: number, birthWeight: number): "SGA" | "AGA" 
 
 export function growthFlags(velocity: number | null, lossPct: number, regained: boolean): Flag[] {
   const f: Flag[] = [];
-  if (lossPct > 15) f.push({ key: "loss", label: "Excessive weight loss > 15%", sev: "crit" });
-  else if (lossPct > 10) f.push({ key: "loss", label: "Weight loss > 10%", sev: "warn" });
-  if (!regained && lossPct > 0) f.push({ key: "regain", label: "Birth weight not yet regained", sev: "info" });
+  // Accept signed cumulative change (negative = loss) or a positive magnitude.
+  const loss = lossPct < 0 ? -lossPct : lossPct;
+  if (loss > 15) f.push({ key: "loss", label: "Excessive weight loss > 15%", sev: "crit", note: `${loss}% below BW` });
+  else if (loss > 10) f.push({ key: "loss", label: "Weight loss > 10%", sev: "warn", note: `${loss}% below BW` });
+  if (!regained && loss > 0) f.push({ key: "regain", label: "Birth weight not yet regained", sev: "info" });
   if (velocity != null) {
     if (velocity < 0) f.push({ key: "vel", label: "Weight falling", sev: "warn", note: `${velocity} g/kg/d` });
     else if (velocity < 10) f.push({ key: "vel", label: "Suboptimal growth < 10 g/kg/d", sev: "warn", note: `${velocity} g/kg/d` });
@@ -230,7 +247,8 @@ export function interpretLabs(labs: Record<string, string>, b: BabyLite): Flag[]
   if (tlc != null && band === "neonate" && (tlc < 5000 || tlc > 30000))
     f.push({ key: "tlc", label: "Abnormal TLC", sev: "warn", note: `${tlc}` });
   const crp = num(labs["CRP"]);
-  if (crp != null && crp > 10) f.push({ key: "crp", label: "Raised CRP (inflammation)", sev: "warn", note: `${crp}` });
+  if (crp != null && crp > 100) f.push({ key: "crp", label: "Markedly raised CRP — high suspicion of bacterial sepsis", sev: "crit", note: `${crp} mg/L` });
+  else if (crp != null && crp > 10) f.push({ key: "crp", label: "Raised CRP (inflammation)", sev: "warn", note: `${crp} mg/L` });
   const na = num(labs["Na"]);
   if (na != null) {
     if (na < 125 || na > 155) f.push({ key: "na", label: "Marked Na derangement", sev: "crit", note: `Na ${na}` });
@@ -244,7 +262,8 @@ export function interpretLabs(labs: Record<string, string>, b: BabyLite): Flag[]
     else if (k > 6) f.push({ key: "k", label: "Hyperkalaemia", sev: "warn", note: `K ${k}` });
   }
   const ca = num(labs["Ca (ionised)"]);
-  if (ca != null && ca < 1.0) f.push({ key: "ca", label: "Hypocalcaemia (ionised)", sev: "warn", note: `${ca}` });
+  if (ca != null && ca < 0.9) f.push({ key: "ca", label: "Severe hypocalcaemia (ionised) — treat now", sev: "crit", note: `${ca} mmol/L` });
+  else if (ca != null && ca < 1.0) f.push({ key: "ca", label: "Hypocalcaemia (ionised)", sev: "warn", note: `${ca} mmol/L` });
   const cr = num(labs["Creatinine"]);
   if (cr != null && cr > 1.5) f.push({ key: "cr", label: "Raised creatinine", sev: "warn", note: `${cr}` });
   return f;
@@ -263,9 +282,10 @@ export function interpretABG(labs: Record<string, string>): Flag[] {
   const respAlk = pco2 != null && pco2 < 35;
   const metAcid = (hco3 != null && hco3 < 18) || (be != null && be < -5);
   const metAlk = (hco3 != null && hco3 > 26) || (be != null && be > 3);
+  const severeAcid = ph < 7.15; // severe acidaemia regardless of mechanism
   if (acid && respAcid && metAcid) f.push({ key: "abg", label: "Mixed respiratory + metabolic acidosis", sev: "crit", note: `pH ${ph}` });
-  else if (acid && respAcid) f.push({ key: "abg", label: "Respiratory acidosis", sev: "warn", note: `pH ${ph}, pCO₂ ${pco2}` });
-  else if (acid && metAcid) f.push({ key: "abg", label: "Metabolic acidosis", sev: "warn", note: `pH ${ph}, HCO₃ ${hco3 ?? be}` });
+  else if (acid && respAcid) f.push({ key: "abg", label: severeAcid ? "Severe respiratory acidosis" : "Respiratory acidosis", sev: severeAcid ? "crit" : "warn", note: `pH ${ph}, pCO₂ ${pco2}` });
+  else if (acid && metAcid) f.push({ key: "abg", label: severeAcid ? "Severe metabolic acidosis" : "Metabolic acidosis", sev: severeAcid ? "crit" : "warn", note: `pH ${ph}, HCO₃ ${hco3 ?? be}` });
   else if (alk && respAlk) f.push({ key: "abg", label: "Respiratory alkalosis", sev: "warn", note: `pH ${ph}, pCO₂ ${pco2}` });
   else if (alk && metAlk) f.push({ key: "abg", label: "Metabolic alkalosis", sev: "warn", note: `pH ${ph}` });
   else if (!acid && !alk && (respAcid || metAcid)) f.push({ key: "abg", label: "Compensated acidosis", sev: "info", note: `pH ${ph}` });

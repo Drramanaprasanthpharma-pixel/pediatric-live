@@ -10,6 +10,25 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 
+/**
+ * Keymaster List — registered staff. The employee code (stored as a SHA-256
+ * hash) is the password used to sign in; anyone not signed in is view-only.
+ */
+export const keymasters = pgTable(
+  "keymasters",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull(),
+    /** SHA-256 hash of the employee code (the code itself is never stored). */
+    codeHash: text("code_hash").notNull(),
+    role: text("role").notNull().default("Consultant"),
+    unit: text("unit").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdBy: text("created_by").notNull().default("bootstrap"),
+  },
+  (t) => [index("keymasters_name_idx").on(t.name)],
+);
+
 export const babies = pgTable(
   "babies",
   {
@@ -128,6 +147,10 @@ export const tasks = pgTable(
     doneAt: timestamp("done_at", { withTimezone: true }),
     /** Who marked it completed. */
     doneBy: text("done_by").notNull().default(""),
+    /** Manually entered due date/time for the action (never auto-filled). */
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+    /** Extra free-text detail for the action. */
+    note: text("note").notNull().default(""),
     owner: text("owner").notNull().default("Team"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

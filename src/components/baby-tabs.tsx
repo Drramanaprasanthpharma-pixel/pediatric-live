@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Circle } from "lucide-react";
+import { CalendarClock, CheckCircle2, Circle, Clock, User, X } from "lucide-react";
 import { Chip, ChipGroup, DialWithOther, NumField, Section, Stepper, api, useTempUnit } from "@/components/ui";
 import { FlagsList, FluidsCalcPanel, GrowthFlagsRow, LabsInterpretation, RespInterpretation, VitalsInterpretation } from "@/components/interpret-ui";
 import { interpretVitals, type Flag, type VitalsInput } from "@/lib/interpret";
@@ -80,8 +80,16 @@ export function VitalsTab({
 
   const submit = async () => {
     setSaving(true);
+    // Auto-derive MAP from SBP/DBP when not entered, so BP always stores fully.
+    const autoMap =
+      v.map != null && v.map !== 0
+        ? v.map
+        : v.sbp != null && v.dbp != null
+          ? Math.round((v.sbp + 2 * v.dbp) / 3)
+          : undefined;
     await api(`/api/babies/${id}/vitals`, "POST", {
       ...v,
+      map: autoMap,
       painScale,
       painRaw,
       painScore: Math.round(painRaw),
@@ -188,7 +196,7 @@ export function VitalsTab({
                 <th>RR</th>
                 <th>SpO₂</th>
                 <th>T °F</th>
-                <th>BP</th>
+                <th>BP sbp/dbp (map)</th>
                 <th>RBS</th>
                 <th>Pain</th>
               </tr>
@@ -778,6 +786,39 @@ export function CourseTab({
   );
 }
 
+type ComposedAction = {
+  text: string;
+  when: string; // YYYY-MM-DD — manual only
+  time: string; // HH:MM — manual only
+  priority: string;
+  owner: string;
+  note: string;
+};
+
+const toComposed = (t: {
+  text: string;
+  scheduledAt?: string | null;
+  priority?: string;
+  owner?: string;
+  note?: string;
+}): ComposedAction => ({
+  text: t.text,
+  when: t.scheduledAt ? t.scheduledAt.slice(0, 10) : "",
+  time: t.scheduledAt ? t.scheduledAt.slice(11, 16) : "",
+  priority: t.priority ?? "today",
+  owner: t.owner ?? "",
+  note: t.note ?? "",
+});
+
+const blankAction = (text: string, owner = ""): ComposedAction => ({
+  text,
+  when: "",
+  time: "",
+  priority: "today",
+  owner,
+  note: "",
+});
+
 export function HandoverTab({ d, id, reload, user }: { d: Detail; id: string; reload: () => void; user: string }) {
   const b = d.baby;
   const c = b.clinical ?? {};
@@ -801,9 +842,17 @@ export function HandoverTab({ d, id, reload, user }: { d: Detail; id: string; re
   const [toStaff, setToStaff] = useState("");
   const [illness, setIllness] = useState(b.acuity);
   const [summary, setSummary] = useState(autoSummary);
-  const [actions, setActions] = useState<string[]>([
-    ...new Set(d.tasks.filter((t) => !t.done).map((t) => t.text.trim()).filter(Boolean)),
-  ]);
+  const [actions, setActions] = useState<ComposedAction[]>(() => {
+    const seen = new Set<string>();
+    const out: ComposedAction[] = [];
+    for (const t of d.tasks.filter((t) => !t.done)) {
+      const text = t.text.trim();
+      if (!text || seen.has(text.toLowerCase())) continue;
+      seen.add(text.toLowerCase());
+      out.push(toComposed(t));
+    }
+    return out;
+  });
   const [actionDraft, setActionDraft] = useState("");
   const [synthesis, setSynthesis] = useState("Read-back completed at bedside with nurse in charge.");
   const [saving, setSaving] = useState(false);
@@ -825,7 +874,15 @@ export function HandoverTab({ d, id, reload, user }: { d: Detail; id: string; re
                   toStaff,
                   illness,
                   summary,
-                  actions: [...new Set(actions.map((a) => a.trim()).filter(Boolean))],
+                  actions: actions
+                    .filter((a) => a.text.trim())
+                    .map((a) => ({
+                      text: a.text.trim(),
+                      scheduledAt: a.when ? new Date(`${a.when}T${a.time || "00:00"}`).toISOString() : null,
+                      priority: a.priority,
+                      owner: a.owner || toStaff,
+                      note: a.note,
+                    })),
                   contingency: [],
                   synthesis,
                   snapshot: { clinical: c, vitals: v, problems: d.problems },
@@ -855,17 +912,17 @@ export function HandoverTab({ d, id, reload, user }: { d: Detail; id: string; re
         >
           <div className="lbl mb-1">Quick add</div>
           <div className="flex flex-wrap gap-1.5">
-            {ACTION_PRESETS.filter((preset) => !actions.includes(preset)).map((preset) => (
+            {ACTION_PRESETS.filter((preset) => !actions.some((a) => a.text === preset)).map((preset) => (
               <button
                 key={preset}
                 type="button"
-                onClick={() => setActions((prev) => [...prev, preset])}
+                onClick={() => setActions((prev) => [...prev, blankAction(preset, toStaff)])}
                 className="chip chip-off"
               >
                 + {preset}
               </button>
             ))}
-            {ACTION_PRESETS.every((preset) => actions.includes(preset)) && (
+            {ACTION_PRESETS.every((preset) => actions.some((a) => a.text === preset)) && (
               <span className="text-[11px] text-emerald-300">✓ All preset actions have been added.</span>
             )}
           </div>
@@ -879,7 +936,8 @@ export function HandoverTab({ d, id, reload, user }: { d: Detail; id: string; re
                 if (e.key === "Enter") {
                   e.preventDefault();
                   const next = actionDraft.trim();
-                  if (next && !actions.includes(next)) setActions((prev) => [...prev, next]);
+                  if (next && !actions.some((a) => a.text === next))
+                    setActions((prev) => [...prev, blankAction(next, toStaff)]);
                   setActionDraft("");
                 }
               }}
@@ -887,10 +945,11 @@ export function HandoverTab({ d, id, reload, user }: { d: Detail; id: string; re
             <button
               type="button"
               className="btn-ghost"
-              disabled={!actionDraft.trim() || actions.includes(actionDraft.trim())}
+              disabled={!actionDraft.trim() || actions.some((a) => a.text === actionDraft.trim())}
               onClick={() => {
                 const next = actionDraft.trim();
-                if (next && !actions.includes(next)) setActions((prev) => [...prev, next]);
+                if (next && !actions.some((a) => a.text === next))
+                  setActions((prev) => [...prev, blankAction(next, toStaff)]);
                 setActionDraft("");
               }}
             >
@@ -898,28 +957,83 @@ export function HandoverTab({ d, id, reload, user }: { d: Detail; id: string; re
             </button>
           </div>
           <div className="mt-3 rounded-xl border border-emerald-400/25 bg-emerald-400/5 p-2">
-            <div className="lbl mb-1">Selected actions ({actions.length})</div>
+            <div className="lbl mb-1">
+              Selected actions ({actions.length}) — set due date &amp; time manually per action
+            </div>
             {actions.length === 0 ? (
               <p className="text-[11px] text-slate-500">No action selected.</p>
             ) : (
-              <ol className="space-y-1">
+              <ol className="space-y-2">
                 {actions.map((action, index) => (
-                  <li
-                    key={`${action}-${index}`}
-                    className="flex items-start gap-2 rounded-lg border border-white/10 bg-slate-900/30 px-2 py-1.5 text-xs text-slate-200"
-                  >
-                    <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-400/15 text-[10px] font-black text-emerald-300">
-                      {index + 1}
-                    </span>
-                    <span className="flex-1">{action}</span>
-                    <button
-                      type="button"
-                      className="text-rose-300"
-                      title="Remove action"
-                      onClick={() => setActions((prev) => prev.filter((_, i) => i !== index))}
-                    >
-                      ✕
-                    </button>
+                  <li key={`${action.text}-${index}`} className="rounded-lg border border-white/10 bg-slate-900/30 p-2">
+                    <div className="flex items-start gap-2">
+                      <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-400/15 text-[10px] font-black text-emerald-300">
+                        {index + 1}
+                      </span>
+                      <span className="flex-1 text-xs font-semibold text-slate-100">{action.text}</span>
+                      <button
+                        type="button"
+                        className="text-rose-300 hover:text-rose-200"
+                        title="Remove action"
+                        onClick={() => setActions((prev) => prev.filter((_, i) => i !== index))}
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                    <div className="mt-2 grid gap-2 pl-7 sm:grid-cols-2 lg:grid-cols-4">
+                      <label className="flex items-center gap-1 text-[10px] text-slate-400">
+                        <CalendarClock size={11} className="shrink-0" />
+                        <input
+                          type="date"
+                          title="Due date (manual)"
+                          className="inp !px-1.5 !py-0.5 text-[11px]"
+                          value={action.when}
+                          onChange={(e) =>
+                            setActions((prev) => prev.map((a, i) => (i === index ? { ...a, when: e.target.value } : a)))
+                          }
+                        />
+                      </label>
+                      <label className="flex items-center gap-1 text-[10px] text-slate-400">
+                        <Clock size={11} className="shrink-0" />
+                        <input
+                          type="time"
+                          title="Due time (manual)"
+                          className="inp !px-1.5 !py-0.5 text-[11px]"
+                          value={action.time}
+                          onChange={(e) =>
+                            setActions((prev) => prev.map((a, i) => (i === index ? { ...a, time: e.target.value } : a)))
+                          }
+                        />
+                      </label>
+                      <select
+                        title="Priority"
+                        className="inp !px-1.5 !py-0.5 text-[11px]"
+                        value={action.priority}
+                        onChange={(e) =>
+                          setActions((prev) => prev.map((a, i) => (i === index ? { ...a, priority: e.target.value } : a)))
+                        }
+                      >
+                        <option value="now">NOW</option>
+                        <option value="today">TODAY</option>
+                        <option value="routine">ROUTINE</option>
+                      </select>
+                      <input
+                        className="inp !px-1.5 !py-0.5 text-[11px]"
+                        placeholder="Owner"
+                        value={action.owner}
+                        onChange={(e) =>
+                          setActions((prev) => prev.map((a, i) => (i === index ? { ...a, owner: e.target.value } : a)))
+                        }
+                      />
+                      <input
+                        className="inp !px-1.5 !py-0.5 text-[11px] sm:col-span-2 lg:col-span-4"
+                        placeholder="Detail / note (e.g. after morning feed, send with sample)"
+                        value={action.note}
+                        onChange={(e) =>
+                          setActions((prev) => prev.map((a, i) => (i === index ? { ...a, note: e.target.value } : a)))
+                        }
+                      />
+                    </div>
                   </li>
                 ))}
               </ol>
@@ -936,37 +1050,68 @@ export function HandoverTab({ d, id, reload, user }: { d: Detail; id: string; re
             <div className="mt-2 rounded-lg border border-emerald-400/25 bg-emerald-400/5 p-2">
               <div className="lbl mb-1 text-emerald-300">Action list ({h.actions?.length ?? 0})</div>
               {h.actions?.length ? (
-                <ol className="space-y-1 text-[11px] text-slate-100">
-                  {[...new Set(h.actions.map((a) => String(a).trim()).filter(Boolean))].map((action, index) => {
-                    const task = d.tasks.find(
-                      (t) => t.text.trim().toLowerCase() === action.toLowerCase(),
-                    );
+                <ol className="space-y-1.5 text-[11px] text-slate-100">
+                  {h.actions.map((raw, index) => {
+                    const a = typeof raw === "string" ? { text: raw } : (raw as Record<string, unknown>);
+                    const text = String(a.text ?? "").trim();
+                    if (!text) return null;
+                    const sched = a.scheduledAt ? String(a.scheduledAt) : null;
+                    const priority = String(a.priority ?? "today");
+                    const owner = String(a.owner ?? "");
+                    const note = String(a.note ?? "");
+                    const task = d.tasks.find((t) => t.text.trim().toLowerCase() === text.toLowerCase());
                     const done = !!task?.done;
                     return (
-                      <li key={`${action}-${index}`} className="flex items-start gap-1.5">
-                        <button
-                          type="button"
-                          title={done ? "Re-open action" : "Mark as completed"}
-                          onClick={async () => {
-                            if (!task) return;
-                            await api(`/api/babies/${id}/tasks`, "PATCH", {
-                              id: task.id,
-                              done: !done,
-                              doneBy: user || "Team",
-                            });
-                            reload();
-                          }}
-                          className={`mt-0.5 shrink-0 ${done ? "text-emerald-300" : "text-slate-500 hover:text-emerald-300"}`}
-                        >
-                          {done ? <CheckCircle2 size={13} strokeWidth={2.4} /> : <Circle size={13} />}
-                        </button>
-                        <span className={done ? "text-slate-400 line-through" : ""}>{action}</span>
-                        {done && task?.doneAt && (
-                          <span className="ml-auto shrink-0 text-[10px] text-emerald-300/90">
-                            ✓ {fmtTime(task.doneAt)}
-                            {task.doneBy ? ` · ${task.doneBy}` : ""}
+                      <li key={`${text}-${index}`} className="rounded-lg border border-white/10 bg-slate-900/30 p-1.5">
+                        <div className="flex items-start gap-1.5">
+                          <button
+                            type="button"
+                            title={done ? "Re-open action" : "Mark as completed"}
+                            onClick={async () => {
+                              if (!task) return;
+                              await api(`/api/babies/${id}/tasks`, "PATCH", {
+                                id: task.id,
+                                done: !done,
+                                doneBy: user || "Team",
+                              });
+                              reload();
+                            }}
+                            className={`mt-0.5 shrink-0 ${done ? "text-emerald-300" : "text-slate-500 hover:text-emerald-300"}`}
+                          >
+                            {done ? <CheckCircle2 size={13} strokeWidth={2.4} /> : <Circle size={13} />}
+                          </button>
+                          <span className={`flex-1 ${done ? "text-slate-400 line-through" : ""}`}>{text}</span>
+                          {done && task?.doneAt && (
+                            <span className="shrink-0 text-[10px] text-emerald-300/90">
+                              ✓ {fmtTime(task.doneAt)}
+                              {task.doneBy ? ` · ${task.doneBy}` : ""}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-5 text-[10px]">
+                          <span
+                            className={`rounded border px-1.5 py-0.5 font-bold ${
+                              priority === "now"
+                                ? "border-rose-400/40 bg-rose-500/15 text-rose-200"
+                                : priority === "routine"
+                                  ? "border-sky-400/40 bg-sky-500/15 text-sky-200"
+                                  : "border-amber-400/40 bg-amber-500/15 text-amber-200"
+                            }`}
+                          >
+                            {priority.toUpperCase()}
                           </span>
-                        )}
+                          {sched && (
+                            <span className="inline-flex items-center gap-1 rounded border border-cyan-400/40 bg-cyan-400/10 px-1.5 py-0.5 font-bold text-cyan-200">
+                              <Clock size={10} /> due {fmtTime(sched)}
+                            </span>
+                          )}
+                          {owner && (
+                            <span className="inline-flex items-center gap-1 text-slate-400">
+                              <User size={10} /> {owner}
+                            </span>
+                          )}
+                          {note && <span className="italic text-slate-400">“{note}”</span>}
+                        </div>
                       </li>
                     );
                   })}

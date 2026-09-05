@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { babies, events, handovers, problems, tasks, vitals } from "@/db/schema";
 import { and, desc, eq } from "drizzle-orm";
-import { editorOf, unsigned } from "@/lib/guard";
+import { editorOfChecked, unsigned } from "@/lib/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +37,7 @@ export async function GET(_req: Request, ctx: Ctx) {
 }
 
 export async function PATCH(req: Request, ctx: Ctx) {
-  if (!editorOf(req)) return unsigned();
+  if (!(await editorOfChecked(req))) return unsigned();
   const id = Number((await ctx.params).id);
   const body = await req.json();
   const patch: Record<string, unknown> = { updatedAt: new Date() };
@@ -85,7 +85,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
 }
 
 export async function DELETE(req: Request, ctx: Ctx) {
-  if (!editorOf(req)) return unsigned();
+  if (!(await editorOfChecked(req))) return unsigned();
   const id = Number((await ctx.params).id);
   const permanent = new URL(req.url).searchParams.get("permanent") === "1";
   if (!permanent) {
