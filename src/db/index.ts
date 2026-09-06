@@ -20,7 +20,17 @@ function getPool(): Pool {
     );
   }
 
-  const newPool = new Pool({ connectionString: databaseUrl });
+  // Most managed Postgres providers used behind Vercel (Neon, Supabase,
+  // Railway, Vercel Postgres, etc.) require TLS, and node-postgres won't
+  // negotiate their certificate chain unless SSL is explicitly configured —
+  // without this, connections fail with an opaque "self signed certificate"
+  // / connection error rather than a clear message. Skip it only if the
+  // connection string explicitly opts out (sslmode=disable), e.g. local dev.
+  const wantsNoSsl = /sslmode=disable/i.test(databaseUrl);
+  const newPool = new Pool({
+    connectionString: databaseUrl,
+    ssl: wantsNoSsl ? undefined : { rejectUnauthorized: false },
+  });
 
   if (process.env.NODE_ENV !== "production") {
     globalForDb.__arenaNextJsPostgresqlPool = newPool;
