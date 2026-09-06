@@ -2,6 +2,7 @@
 
 import {
   BookOpen,
+  Calculator,
   CalendarDays,
   Check,
   GraduationCap,
@@ -512,6 +513,7 @@ export function TopBar({
           <MobileNavLink href="/consultants" icon={<Users size={13} />}>By consultant</MobileNavLink>
           <MobileNavLink href="/handover" icon={<Printer size={13} />}>Shift sheet</MobileNavLink>
           <MobileNavLink href="/reference" icon={<BookOpen size={13} />}>Parameters</MobileNavLink>
+          <MobileNavLink href="/calculators" icon={<Calculator size={13} />}>Calculators</MobileNavLink>
           <MobileNavLink href="/learning" icon={<GraduationCap size={13} />}>Learning space</MobileNavLink>
           <MobileNavLink href="/updates" icon={<Newspaper size={13} />}>Recent updates</MobileNavLink>
           <MobileNavLink href="/roster" icon={<CalendarDays size={13} />}>Duty roster</MobileNavLink>
