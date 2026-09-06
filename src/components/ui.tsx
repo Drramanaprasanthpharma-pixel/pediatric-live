@@ -12,6 +12,7 @@ import {
   Newspaper,
   Printer,
   Sun,
+  X,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -612,7 +613,7 @@ export async function refreshHasKeys(): Promise<boolean> {
 
 /** Signed-in identity; name is empty when nobody is signed in. */
 export function useUser() {
-  const [session, setS] = useState<Session | null>(() => getSession());
+  const [session, setS] = useState<Session | null>(null);
   useEffect(() => {
     const sync = () => setS(getSession());
     window.addEventListener("neo:session", sync);
@@ -864,15 +865,16 @@ export function useLocked(): boolean {
 /** Amber strip shown while the session is view-only. */
 export function LockBanner() {
   const locked = useLocked();
+  const [dismissed, setDismissed] = useState(false);
   useEffect(() => {
     document.body.classList.toggle("view-only", locked);
   }, [locked]);
-  if (!locked) return null;
+  if (!locked || dismissed) return null;
   return (
     <div className="no-print relative z-40 border-b border-amber-400/40 bg-amber-500/15 backdrop-blur">
       <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-2 px-4 py-2 text-[11px] font-semibold text-amber-200">
         <LockIcon size={12} strokeWidth={2.5} aria-hidden />
-        <span>
+        <span className="min-w-0 flex-1">
           <b>View-only mode.</b> Sign in with your <b>employee code</b> (top-right) to unlock editing, admitting and
           autosave. Browsing stays open to everyone. Keys are managed in the{" "}
           <Link href="/keymasters" className="font-bold underline">
@@ -880,6 +882,15 @@ export function LockBanner() {
           </Link>
           .
         </span>
+        <button
+          type="button"
+          aria-label="Dismiss view-only mode notification"
+          title="Dismiss"
+          onClick={() => setDismissed(true)}
+          className="ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-amber-200/80 transition-colors hover:bg-amber-400/15 hover:text-amber-100"
+        >
+          <X size={16} strokeWidth={2.5} aria-hidden />
+        </button>
       </div>
     </div>
   );
