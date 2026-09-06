@@ -732,6 +732,14 @@ export function SignInModal({ onClose }: { onClose: () => void }) {
       .then((j) => setNames((j.rows ?? []).map((r: { name: string }) => r.name)))
       .catch(() => undefined);
   }, []);
+  // Keep the page behind the modal from scrolling while it's open (mobile + desktop).
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
   const submit = async () => {
     setBusy(true);
     setErr("");
@@ -745,8 +753,13 @@ export function SignInModal({ onClose }: { onClose: () => void }) {
     }
   };
   return (
-    <div className="fixed inset-0 z-[90] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <div className="card w-full max-w-sm p-5">
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      style={{ height: "100dvh", overflow: "hidden" }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="card p-5" style={{ width: "min(92vw, 560px)", maxHeight: "90dvh", overflowY: "auto" }}>
         <div className="mb-3 flex items-center gap-2">
           <span className="grid h-8 w-8 place-items-center rounded-lg border border-cyan-400/40 bg-cyan-400/10 text-cyan-300">
             <KeyRound size={15} />
