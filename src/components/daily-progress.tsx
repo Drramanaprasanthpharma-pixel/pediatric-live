@@ -1,8 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { NumField, Section } from "@/components/ui";
+import { Section } from "@/components/ui";
+import { FlagsList } from "@/components/interpret-ui";
+import { WeightInput } from "@/components/weight-input";
 import type { Clinical, GrowthEntry } from "@/lib/clinical";
+import { anthropometryFlags, growthFlags } from "@/lib/interpret";
 import { calcNutrition, fmtTime, gainGPerKgDay } from "@/lib/clinical";
 
 type BabyLite = {
@@ -10,7 +13,10 @@ type BabyLite = {
   birthWeight: number;
   currentWeight: number;
   gestWeeks: number;
-  unit?: string;
+  gestDays?: number;
+  unit: string;
+  birthHc?: number;
+  birthLength?: number;
   clinical: Clinical;
 };
 
@@ -27,6 +33,7 @@ type Row = {
   protein: number;
   fluids: number;
   hc?: number;
+  length?: number;
   note?: string;
   flag: { text: string; cls: string } | null;
 };
@@ -84,6 +91,7 @@ export function DailyProgressTab({
         protein: e.protein ?? n.totalProtein,
         fluids: e.fluids ?? n.totalFluids,
         hc: e.hc,
+        length: e.length,
         note: e.note,
         flag,
       });
@@ -125,6 +133,15 @@ export function DailyProgressTab({
     setSaving(false);
   };
 
+  const growthFlagList = useMemo(
+    () => growthFlags(avgVel, -(maxLossPct), regained ? true : totalGain >= 0 ? true : false),
+    [avgVel, maxLossPct, regained, totalGain],
+  );
+  const anthroFlagList = useMemo(
+    () => anthropometryFlags({ ...baby, gestDays: baby.gestDays ?? 0 }, latest?.hc ?? baby.birthHc ?? null, latest?.length ?? baby.birthLength ?? null),
+    [baby, latest],
+  );
+  const flags = useMemo(() => [...growthFlagList, ...anthroFlagList], [growthFlagList, anthroFlagList]);
   const kcalPct = Math.min(100, Math.round((n.totalKcal / n.kcalTarget[1]) * 100));
   const protPct = Math.min(100, Math.round((n.totalProtein / n.proteinTarget[1]) * 100));
 
@@ -154,6 +171,14 @@ export function DailyProgressTab({
           v={avgVel !== null ? `${avgVel} g/kg/d` : "—"}
           tone={(avgVel ?? 0) >= 15 ? "text-emerald-300" : "text-amber-300"}
         />
+      </div>
+
+      <div className="rounded-xl border border-cyan-400/25 bg-cyan-400/5 p-3">
+        <div className="mb-1.5 flex items-center gap-1.5">
+          <span className="lbl text-cyan-300">Provisional anthropometry &amp; growth interpretation</span>
+          <span className="ml-auto text-[9px] uppercase tracking-wide text-slate-500">decision support</span>
+        </div>
+        <FlagsList flags={flags} empty="Add serial weights with HC and length for a provisional interpretation." />
       </div>
 
       <div className="grid gap-3 lg:grid-cols-3">
@@ -237,11 +262,12 @@ export function DailyProgressTab({
             right={
               <div className="flex items-end gap-1.5">
                 <div className="w-32">
-                  {useKg ? (
-                    <NumField label="Today's weight (kg)" value={w} onChange={setW} min={1} max={150} step={0.5} decimals={1} />
-                  ) : (
-                    <NumField label="Today's weight (g)" value={w} onChange={setW} min={300} max={6000} step={5} />
-                  )}
+                  <WeightInput
+                    label="Today's weight"
+                    valueGrams={w != null ? (useKg ? Math.round(w * 1000) : w) : undefined}
+                    onChangeGrams={(g) => setW(useKg ? g / 1000 : g)}
+                    neonatal={!useKg}
+                  />
                 </div>
                 <button className="btn-primary" onClick={recordToday} disabled={!w || saving}>
                   {saving ? "Saving…" : "Compile today"}
@@ -256,6 +282,8 @@ export function DailyProgressTab({
                     <th className="p-1">DOL</th>
                     <th>Date</th>
                     <th>Weight</th>
+                    <th>HC</th>
+                    <th>Length</th>
                     <th>Δ / day</th>
                     <th>g/kg/d</th>
                     <th>Cum. Δ</th>
@@ -270,6 +298,8 @@ export function DailyProgressTab({
                     <td className="p-1 font-bold text-slate-300">0</td>
                     <td className="whitespace-nowrap text-slate-400">{fmtTime(baby.dob).slice(0, 11)}</td>
                     <td className="font-bold tabular-nums text-white">{baby.birthWeight} g</td>
+                    <td className="tabular-nums text-slate-300">{baby.birthHc ?? "—"}</td>
+                    <td className="tabular-nums text-slate-300">{baby.birthLength ?? "—"}</td>
                     <td className="text-slate-500">—</td>
                     <td className="text-slate-500">—</td>
                     <td className="text-slate-500">—</td>
@@ -283,6 +313,8 @@ export function DailyProgressTab({
                       <td className="p-1 font-bold tabular-nums text-slate-300">{r.dol}</td>
                       <td className="whitespace-nowrap text-slate-400">{fmtTime(r.at).slice(0, 11)}</td>
                       <td className="font-bold tabular-nums text-white">{r.weight} g</td>
+                      <td className="tabular-nums text-slate-300">{r.hc ?? "—"}</td>
+                      <td className="tabular-nums text-slate-300">{r.length ?? "—"}</td>
                       <td className={`tabular-nums ${r.deltaPrev < 0 ? "text-rose-300" : "text-emerald-300"}`}>
                         {r.deltaPrev > 0 ? "+" : ""}
                         {r.deltaPrev} g
@@ -323,7 +355,7 @@ export function DailyProgressTab({
                   ))}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="p-4 text-center text-slate-400">
+                      <td colSpan={12} className="p-4 text-center text-slate-400">
                         No daily weights yet — enter today&apos;s weight and tap “Compile today”.
                       </td>
                     </tr>

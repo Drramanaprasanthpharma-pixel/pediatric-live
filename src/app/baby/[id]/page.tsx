@@ -82,6 +82,8 @@ type Detail = {
     gestDays: number;
     birthWeight: number;
     currentWeight: number;
+    birthLength: number;
+    birthHc: number;
     deliveryMode: string;
     apgar1: number;
     apgar5: number;
@@ -429,6 +431,8 @@ function Overview({
             gestDays: b.gestDays,
             birthWeight: b.birthWeight,
             currentWeight: b.currentWeight,
+            birthLength: b.birthLength,
+            birthHc: b.birthHc,
             deliveryMode: b.deliveryMode,
             apgar1: b.apgar1,
             apgar5: b.apgar5,

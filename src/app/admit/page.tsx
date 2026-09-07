@@ -16,6 +16,7 @@ import {
 } from "@/components/ui";
 import { UnitBedDial, SubSpecialtyPicker, UnitSwitcher } from "@/components/unit-ui";
 import { AdmissionTriage } from "@/components/triage";
+import { WeightInput } from "@/components/weight-input";
 type TriageState = {
   scale: string;
   band: string;
@@ -152,6 +153,8 @@ function AdmitForm() {
     gestWeeks: 34,
     gestDays: 0,
     birthWeight: 0,
+    birthLength: 0,
+    birthHc: 0,
     deliveryMode: "LSCS",
     apgar1: 8,
     apgar5: 9,
@@ -213,6 +216,8 @@ function AdmitForm() {
       gestDays: f.gestDays,
       birthWeight: grams,
       currentWeight: grams,
+      birthLength: Number(f.birthLength) || 0,
+      birthHc: Number(f.birthHc) || 0,
       deliveryMode: f.deliveryMode,
       apgar1: f.apgar1,
       apgar5: f.apgar5,
@@ -391,17 +396,9 @@ function AdmitForm() {
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
                   <Stepper label="Gestation weeks" value={f.gestWeeks} onChange={(n) => set("gestWeeks")(n)} min={22} max={43} />
                   <Stepper label="Gestation days" value={f.gestDays} onChange={(n) => set("gestDays")(n)} min={0} max={6} />
-                  <label className={`rounded-xl border p-2 ${weightInvalid ? "border-rose-400/60" : "border-cyan-400/40"} bg-cyan-400/5`}>
-                    <span className="lbl mb-1 block text-cyan-300">Birth weight (g) *</span>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      className="w-full bg-transparent py-1 text-center text-xl font-black tabular-nums text-white outline-none"
-                      value={f.birthWeight || ""}
-                      onChange={(e) => set("birthWeight")(Number(e.target.value) || 0)}
-                      placeholder="grams"
-                    />
-                  </label>
+                  <WeightInput label="Birth weight" valueGrams={f.birthWeight} onChangeGrams={(g) => set("birthWeight")(g)} neonatal />
+                  <NumField label="Birth length (cm)" value={f.birthLength} onChange={(n) => set("birthLength")(n)} min={20} max={70} step={0.5} decimals={1} placeholder="—" />
+                  <NumField label="Head circ. (cm)" value={f.birthHc} onChange={(n) => set("birthHc")(n)} min={18} max={50} step={0.5} decimals={1} placeholder="—" />
                   <Stepper label="Apgar 1 min" value={f.apgar1} onChange={(n) => set("apgar1")(n)} min={0} max={10} />
                   <Stepper label="Apgar 5 min" value={f.apgar5} onChange={(n) => set("apgar5")(n)} min={0} max={10} />
                 </div>
@@ -434,16 +431,15 @@ function AdmitForm() {
               <>
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
                   <Stepper label="Baby gestation (wk)" value={f.gestWeeks} onChange={(n) => set("gestWeeks")(n)} min={28} max={43} />
-                  <NumField
-                    label="Baby birth weight (kg)"
-                    value={f.birthWeight}
-                    onChange={(n) => set("birthWeight")(n)}
-                    min={0.3}
-                    max={7}
-                    step={0.05}
-                    decimals={2}
+                  <WeightInput
+                    label="Baby birth weight"
+                    valueGrams={Math.round((f.birthWeight || 0) * 1000)}
+                    onChangeGrams={(g) => set("birthWeight")(g / 1000)}
+                    neonatal
                   />
                   <Stepper label="Postnatal day" value={f.apgar1} onChange={(n) => set("apgar1")(n)} min={0} max={10} />
+                  <NumField label="Birth length (cm)" value={f.birthLength} onChange={(n) => set("birthLength")(n)} min={20} max={70} step={0.5} decimals={1} placeholder="—" />
+                  <NumField label="Head circ. (cm)" value={f.birthHc} onChange={(n) => set("birthHc")(n)} min={18} max={50} step={0.5} decimals={1} placeholder="—" />
                 </div>
                 <div className="lbl mt-3 mb-1">Delivery / procedure</div>
                 <DialWithOther options={DELIVERY} value={f.deliveryMode} onChange={(v: string) => v && set("deliveryMode")(v)} otherPlaceholder="Other procedure…" />
@@ -459,14 +455,31 @@ function AdmitForm() {
               <>
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
                   <Stepper label="Age (years)" value={f.gestWeeks} onChange={(n) => set("gestWeeks")(n)} min={0} max={18} />
+                  <WeightInput
+                    label="Weight"
+                    valueGrams={Math.round((f.birthWeight || 0) * 1000)}
+                    onChangeGrams={(g) => set("birthWeight")(g / 1000)}
+                    neonatal={false}
+                  />
                   <NumField
-                    label="Weight (kg)"
-                    value={f.birthWeight}
-                    onChange={(n) => set("birthWeight")(n)}
-                    min={1}
-                    max={150}
+                    label={unit === "paeds" ? "Height / length (cm)" : "Height (cm)"}
+                    value={f.birthLength}
+                    onChange={(n) => set("birthLength")(n)}
+                    min={40}
+                    max={200}
                     step={0.5}
                     decimals={1}
+                    placeholder="cm"
+                  />
+                  <NumField
+                    label="Head circumference (cm)"
+                    value={f.birthHc}
+                    onChange={(n) => set("birthHc")(n)}
+                    min={25}
+                    max={60}
+                    step={0.5}
+                    decimals={1}
+                    placeholder="cm"
                   />
                   <div className="rounded-xl border border-white/10 bg-slate-900/50 p-2 text-[11px] text-slate-400">
                     <span className="lbl">Age</span>
@@ -474,6 +487,9 @@ function AdmitForm() {
                     <span className="ml-2 text-slate-400">· Wt {f.birthWeight ? `${f.birthWeight} kg` : "—"}</span>
                   </div>
                 </div>
+                <p className="mt-1.5 text-[10px] text-slate-400">
+                  Measure length/height supine (under 2 y) or standing. HC to nearest 0.5 cm — recheck if crossing 2 centile lines between visits.
+                </p>
                 <div className="lbl mt-3 mb-1">Source / reason for admission</div>
                 <DialWithOther
                   options={unit === "paeds" ? PAEDS_SOURCE : ICU_SOURCE}

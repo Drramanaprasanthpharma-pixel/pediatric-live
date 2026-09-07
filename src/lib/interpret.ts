@@ -423,6 +423,47 @@ export function respFlags(opts: {
   return out;
 }
 
+/* ---------- Neonatal anthropometry (Fenton-referenced HC & length) ---------- */
+
+const HC_REF: Record<number, [number, number, number]> = {
+  28: [25.5, 27.5, 29.5], 30: [26.5, 28.5, 30.5], 32: [28, 30, 32], 34: [29.5, 31.5, 33.5],
+  36: [31, 33, 35], 38: [32.5, 34.5, 36.5], 40: [33.5, 35.5, 37.5], 42: [34.5, 36.5, 38.5], 44: [35.5, 37.5, 39.5],
+};
+const LEN_REF: Record<number, [number, number, number]> = {
+  28: [37, 40, 43], 30: [38.5, 41.5, 44.5], 32: [40, 43, 46], 34: [42, 45, 48],
+  36: [43.5, 46.5, 49.5], 38: [45, 48, 51], 40: [46.5, 50, 53.5], 42: [48, 51, 54], 44: [49, 52, 55],
+};
+
+function hcRef(pmaW: number): [number, number, number] {
+  return HC_REF[Math.min(44, Math.max(28, Math.round(pmaW / 2) * 2))] ?? [33, 35, 37];
+}
+function lenRef(pmaW: number): [number, number, number] {
+  return LEN_REF[Math.min(44, Math.max(28, Math.round(pmaW / 2) * 2))] ?? [48, 51, 54];
+}
+
+/** Provisional head-circumference & length flags for neonates, referenced against Fenton-derived percentiles by PMA week. */
+export function anthropometryFlags(b: BabyLite, hc?: number | null, length?: number | null): Flag[] {
+  const { pmaWeeks, band } = ageBand(b);
+  const f: Flag[] = [];
+  if (hc != null && pmaWeeks >= 28 && pmaWeeks <= 46) {
+    const [p3, , p97] = hcRef(pmaWeeks);
+    if (hc < p3 - 1) f.push({ key: "hc", label: `Head circumference ${hc} cm`, sev: "crit", note: `Microcephaly risk — < ${p3 - 1} cm (3rd ${p3}) @ PMA ${pmaWeeks.toFixed(0)}w` });
+    else if (hc < p3) f.push({ key: "hc", label: `Head circumference ${hc} cm`, sev: "warn", note: `At/below 3rd centile (${p3} cm) @ PMA ${pmaWeeks.toFixed(0)}w` });
+    else if (hc > p97 + 1) f.push({ key: "hc", label: `Head circumference ${hc} cm`, sev: "warn", note: `Macrocephaly risk — > ${p97 + 1} cm @ PMA ${pmaWeeks.toFixed(0)}w` });
+    else f.push({ key: "hc", label: `HC ${hc} cm`, sev: "info", note: `Normal range ${p3}–${p97} cm @ PMA ${pmaWeeks.toFixed(0)}w` });
+  }
+  if (length != null && pmaWeeks >= 28 && pmaWeeks <= 46) {
+    const [p3, , p97] = lenRef(pmaWeeks);
+    if (length < p3 - 1) f.push({ key: "len", label: `Length ${length} cm`, sev: "crit", note: `Short stature — < ${p3 - 1} cm (3rd ${p3}) @ PMA ${pmaWeeks.toFixed(0)}w` });
+    else if (length < p3) f.push({ key: "len", label: `Length ${length} cm`, sev: "warn", note: `At/below 3rd centile (${p3} cm) @ PMA ${pmaWeeks.toFixed(0)}w` });
+    else f.push({ key: "len", label: `Length ${length} cm`, sev: "info", note: `Normal range ${p3}–${p97} cm @ PMA ${pmaWeeks.toFixed(0)}w` });
+  }
+  if (band === "neonate" && b.gestWeeks < 37) {
+    f.push({ key: "hcg", label: "Target HC growth 0.5–1 cm/wk", sev: "info" });
+  }
+  return f;
+}
+
 /* ---------- Consolidated impression ---------- */
 
 export function overallImpression(flags: Flag[]): { sev: Flag["sev"]; text: string } {

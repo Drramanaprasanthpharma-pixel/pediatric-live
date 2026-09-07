@@ -13,6 +13,8 @@ export type Detail = {
     gestDays: number;
     birthWeight: number;
     currentWeight: number;
+    birthLength: number;
+    birthHc: number;
     deliveryMode: string;
     apgar1: number;
     apgar5: number;

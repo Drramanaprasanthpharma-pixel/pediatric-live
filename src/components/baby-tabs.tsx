@@ -6,6 +6,8 @@ import { Chip, ChipGroup, DialWithOther, NumField, Section, Stepper, api, useTem
 import { FlagsList, FluidsCalcPanel, GrowthFlagsRow, LabsInterpretation, RespInterpretation, VitalsInterpretation } from "@/components/interpret-ui";
 import { interpretVitals, type Flag, type VitalsInput } from "@/lib/interpret";
 import { PainScoreCalculator } from "@/components/pain-scores";
+import { WeightInput } from "@/components/weight-input";
+import { EditableListField } from "@/components/editable-list";
 import {
   ACTION_PRESETS,
   CARE_BUNDLE,
@@ -57,6 +59,7 @@ export function VitalsTab({
   const { unit } = useTempUnit();
   const [weight, setWeight] = useState<number | undefined>(undefined);
   const [hc, setHc] = useState<number | undefined>(undefined);
+  const [length, setLength] = useState<number | undefined>(undefined);
   const [painScale, setPainScale] = useState(String(last.painScale ?? "NIPS"));
   const [painRaw, setPainRaw] = useState(Number(last.painRaw ?? last.painScore ?? 0));
   const [v, setV] = useState<Record<string, number>>({
@@ -97,13 +100,13 @@ export function VitalsTab({
     });
     if (weight) {
       const grams = useKg ? Math.round(weight * 1000) : Math.round(weight);
-      const growth = [...(d.baby.clinical?.growth ?? []), { at: new Date().toISOString(), weight: grams, hc }];
+      const growth = [...(d.baby.clinical?.growth ?? []), { at: new Date().toISOString(), weight: grams, hc, length }];
       await patch({
         currentWeight: grams,
         clinical: { growth },
         logEvent: {
           kind: "growth",
-          text: `Daily weight ${useKg ? `${weight} kg` : `${grams} g`} recorded${hc ? `, HC ${hc} cm` : ""} during observation round`,
+          text: `Daily weight ${useKg ? `${weight} kg` : `${grams} g`} recorded${hc ? `, HC ${hc} cm` : ""}${length ? `, length ${length} cm` : ""} during observation round`,
           author: user,
         },
       });
@@ -174,15 +177,22 @@ export function VitalsTab({
             <VitalsInterpretation baby={d.baby} v={v} painScale={painScale} painRaw={painRaw} />
           </div>
           <div className="mt-3 rounded-xl border border-cyan-400/25 bg-cyan-400/5 p-2">
-            <div className="lbl mb-1.5">Serial monitoring — today&apos;s weight (optional)</div>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              {useKg ? (
-                <NumField label="Weight (kg)" value={weight} onChange={setWeight} min={1} max={150} step={0.5} decimals={1} />
-              ) : (
-                <NumField label="Weight (g)" value={weight} onChange={setWeight} min={300} max={6000} step={5} />
-              )}
-              {!useKg && <NumField label="Head circumference (cm)" value={hc} onChange={setHc} min={20} max={45} step={0.5} decimals={1} />}
+            <div className="lbl mb-1.5">
+              Serial anthropometry — {d.baby.unit === "nicu" ? "daily weight · weekly HC & length" : d.baby.unit === "postnatal" ? "daily weight" : "weight on admission & weekly"}
             </div>
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+              <WeightInput
+                label={`Weight ${useKg ? "(kg)" : "(g)"}`}
+                valueGrams={weight != null ? (useKg ? Math.round(weight * 1000) : weight) : undefined}
+                onChangeGrams={(g) => setWeight(useKg ? g / 1000 : g)}
+                neonatal={!useKg}
+              />
+              <NumField label="Head circumference (cm)" value={hc} onChange={setHc} min={20} max={60} step={0.5} decimals={1} />
+              <NumField label="Length / height (cm)" value={length} onChange={setLength} min={20} max={200} step={0.5} decimals={1} />
+            </div>
+            <p className="mt-1.5 text-[10px] text-slate-400">
+              Weigh on the same scale, same time, minimal clothing. HC and length weekly or on admission. Values save with the observation round and feed the growth chart.
+            </p>
           </div>
         </Section>
       </div>
@@ -382,6 +392,8 @@ export function GrowthTab({
   const [bw, setBw] = useState(b.birthWeight);
   const [cw, setCw] = useState(b.currentWeight);
   const [w, setW] = useState<number | undefined>(undefined);
+  const [wHc, setWHc] = useState<number | undefined>(undefined);
+  const [wLen, setWLen] = useState<number | undefined>(undefined);
   return (
     <Section
       title="Birth weight & current weight"
@@ -401,9 +413,11 @@ export function GrowthTab({
       }
     >
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        <NumField label="Birth weight (g)" value={bw} onChange={setBw} min={300} max={6000} step={10} />
-        <NumField label="Current weight (g)" value={cw} onChange={setCw} min={300} max={6000} step={10} />
-        <NumField label="Add serial weight (g)" value={w} onChange={setW} min={300} max={6000} step={5} />
+        <WeightInput label="Birth weight" valueGrams={bw} onChangeGrams={setBw} neonatal={d.baby.unit === "nicu"} />
+        <WeightInput label="Current weight" valueGrams={cw} onChangeGrams={setCw} neonatal={d.baby.unit === "nicu"} />
+        <WeightInput label="Add serial weight" valueGrams={w} onChangeGrams={setW} neonatal={d.baby.unit === "nicu"} />
+        <NumField label="HC (cm)" value={wHc} onChange={setWHc} min={20} max={60} step={0.5} decimals={1} />
+        <NumField label="Length / height (cm)" value={wLen} onChange={setWLen} min={20} max={200} step={0.5} decimals={1} />
         <button
           className="btn-ghost self-end"
           disabled={!w}
@@ -411,10 +425,16 @@ export function GrowthTab({
             if (!w) return;
             patch({
               currentWeight: w,
-              clinical: { growth: [...entries, { at: new Date().toISOString(), weight: w }] },
-              logEvent: { kind: "growth", text: `Serial weight ${w} g`, author: user },
+              clinical: { growth: [...entries, { at: new Date().toISOString(), weight: w, hc: wHc, length: wLen }] },
+              logEvent: {
+                kind: "growth",
+                text: `Serial weight ${w} g${wHc ? `, HC ${wHc} cm` : ""}${wLen ? `, length ${wLen} cm` : ""}`,
+                author: user,
+              },
             });
             setW(undefined);
+            setWHc(undefined);
+            setWLen(undefined);
           }}
         >
           Add weigh
@@ -685,14 +705,14 @@ export function CareTab({ d, patch }: { d: Detail; patch: (b: Record<string, unk
   return (
     <div className="grid gap-3 lg:grid-cols-2">
       <Section title="Nursing & developmental care bundle" right={<button className="btn-primary" onClick={() => patch({ clinical: { care, discharge: disch, plan, familyNote: family } })}>Save</button>}>
-        <DialWithOther options={CARE_BUNDLE} value={care} onChange={(v: string[]) => setCare(v)} multi tone="emerald" otherPlaceholder="Add other care item…" />
+        <EditableListField options={CARE_BUNDLE} value={care} onChange={(v: string[]) => setCare(v)} placeholder="Add other care item…" emptyLabel="No care bundle items added yet." />
         <div className="lbl mt-4 mb-1">Plan for next 12 hours</div>
         <textarea className="inp h-24" value={plan} onChange={(e) => setPlan(e.target.value)} />
         <div className="lbl mt-3 mb-1">Family / counselling note</div>
         <textarea className="inp h-20" value={family} onChange={(e) => setFamily(e.target.value)} />
       </Section>
       <Section title="Discharge readiness" sub={`${disch.length}/${DISCHARGE_CRITERIA.length} criteria met`}>
-        <DialWithOther options={DISCHARGE_CRITERIA} value={disch} onChange={(v: string[]) => setDisch(v)} multi tone="cyan" otherPlaceholder="Add custom discharge criterion…" />
+        <EditableListField options={DISCHARGE_CRITERIA} value={disch} onChange={(v: string[]) => setDisch(v)} placeholder="Add custom discharge criterion…" emptyLabel="No discharge criteria added yet." />
       </Section>
     </div>
   );

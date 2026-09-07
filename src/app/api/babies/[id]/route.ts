@@ -6,7 +6,7 @@ import { editorOfChecked, unsigned } from "@/lib/guard";
 
 export const dynamic = "force-dynamic";
 
-const intFields = new Set(["gestWeeks", "gestDays", "birthWeight", "currentWeight", "apgar1", "apgar5"]);
+const intFields = new Set(["gestWeeks", "gestDays", "birthWeight", "currentWeight", "birthLength", "birthHc", "apgar1", "apgar5"]);
 const int = (v: unknown) => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.round(n) : v;
@@ -55,6 +55,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
     "gestDays",
     "birthWeight",
     "currentWeight",
+    "birthLength",
+    "birthHc",
     "deliveryMode",
     "apgar1",
     "apgar5",

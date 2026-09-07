@@ -41,6 +41,8 @@ async function insertSnapshot(snap: Snap, labelSuffix = "") {
       gestDays: Number(b.gestDays ?? 0),
       birthWeight: Number(b.birthWeight ?? 2500),
       currentWeight: Number(b.currentWeight ?? b.birthWeight ?? 2500),
+      birthLength: Number(b.birthLength ?? 0),
+      birthHc: Number(b.birthHc ?? 0),
       deliveryMode: String(b.deliveryMode ?? "LSCS"),
       apgar1: Number(b.apgar1 ?? 8),
       apgar5: Number(b.apgar5 ?? 9),

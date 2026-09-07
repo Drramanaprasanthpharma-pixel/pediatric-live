@@ -51,6 +51,8 @@ export const babies = pgTable(
     gestDays: integer("gest_days").notNull().default(0),
     birthWeight: integer("birth_weight").notNull().default(2500),
     currentWeight: integer("current_weight").notNull().default(2500),
+    birthLength: integer("birth_length").notNull().default(0),
+    birthHc: integer("birth_hc").notNull().default(0),
     deliveryMode: text("delivery_mode").notNull().default("LSCS"),
     apgar1: integer("apgar1").notNull().default(8),
     apgar5: integer("apgar5").notNull().default(9),

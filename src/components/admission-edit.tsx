@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { DialWithOther, NumField, Section, Stepper } from "@/components/ui";
 import { UnitBedDial } from "@/components/unit-ui";
+import { WeightInput } from "@/components/weight-input";
 import type { UnitKey } from "@/lib/units";
 import { unitOf } from "@/lib/units";
 
@@ -31,6 +32,8 @@ export type AdmissionFields = {
   gestDays: number;
   birthWeight: number;
   currentWeight: number;
+  birthHc?: number;
+  birthLength?: number;
   deliveryMode: string;
   apgar1: number;
   apgar5: number;
@@ -81,6 +84,8 @@ export function AdmissionEdit({
       gestDays: f.gestDays,
       birthWeight: f.birthWeight,
       currentWeight: f.currentWeight,
+      birthLength: f.birthLength ?? 0,
+      birthHc: f.birthHc ?? 0,
       deliveryMode: f.deliveryMode,
       apgar1: f.apgar1,
       apgar5: f.apgar5,
@@ -133,6 +138,8 @@ export function AdmissionEdit({
           )}
           {isNicu && <Row k="Gestation" v={`${f.gestWeeks}+${f.gestDays} wk`} />}
           {isNicu && <Row k="Birth weight" v={`${f.birthWeight} g`} />}
+          {f.birthHc ? <Row k="Head circumference" v={`${f.birthHc} cm`} /> : null}
+          {f.birthLength ? <Row k="Length / height" v={`${f.birthLength} cm`} /> : null}
           {isNicu && <Row k="Apgar" v={`${f.apgar1} / ${f.apgar5}`} />}
           {isNicu && <Row k="Inborn" v={f.inborn ? "Inborn" : "Outborn"} />}
           {isPostnatal && <Row k="Baby weight" v={`${f.birthWeight / 1000} kg`} />}
@@ -174,8 +181,10 @@ export function AdmissionEdit({
             <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
               <Stepper label="Gestation weeks" value={f.gestWeeks} onChange={(n) => set("gestWeeks")(n)} min={22} max={43} />
               <Stepper label="Gestation days" value={f.gestDays} onChange={(n) => set("gestDays")(n)} min={0} max={6} />
-              <NumField label="Birth weight (g)" value={f.birthWeight} onChange={(n) => set("birthWeight")(n)} min={300} max={6000} step={10} />
-              <NumField label="Current weight (g)" value={f.currentWeight} onChange={(n) => set("currentWeight")(n)} min={300} max={8000} step={10} />
+              <WeightInput label="Birth weight" valueGrams={f.birthWeight} onChangeGrams={(g) => set("birthWeight")(g)} neonatal />
+              <WeightInput label="Current weight" valueGrams={f.currentWeight} onChangeGrams={(g) => set("currentWeight")(g)} neonatal />
+              <NumField label="Birth length (cm)" value={f.birthLength} onChange={(n) => set("birthLength")(n)} min={20} max={70} step={0.5} decimals={1} placeholder="—" />
+              <NumField label="Head circ. (cm)" value={f.birthHc} onChange={(n) => set("birthHc")(n)} min={18} max={50} step={0.5} decimals={1} placeholder="—" />
               <Stepper label="Apgar 1 min" value={f.apgar1} onChange={(n) => set("apgar1")(n)} min={0} max={10} />
               <Stepper label="Apgar 5 min" value={f.apgar5} onChange={(n) => set("apgar5")(n)} min={0} max={10} />
             </div>
@@ -184,37 +193,29 @@ export function AdmissionEdit({
           {isPostnatal && (
             <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
               <Stepper label="Baby gestation (wk)" value={f.gestWeeks} onChange={(n) => set("gestWeeks")(n)} min={28} max={43} />
-              <NumField
-                label="Baby weight (kg)"
-                value={f.birthWeight / 1000}
-                onChange={(n) => {
-                  const g = Math.round(n * 1000);
-                  setF((p) => ({ ...p, birthWeight: g, currentWeight: g }));
-                }}
-                min={0.3}
-                max={7}
-                step={0.05}
-                decimals={2}
+              <WeightInput
+                label="Baby weight"
+                valueGrams={f.birthWeight}
+                onChangeGrams={(g) => setF((p) => ({ ...p, birthWeight: g, currentWeight: g }))}
+                neonatal
               />
               <Stepper label="Postnatal day" value={f.apgar1} onChange={(n) => set("apgar1")(n)} min={0} max={14} />
+              <NumField label="Birth length (cm)" value={f.birthLength} onChange={(n) => set("birthLength")(n)} min={20} max={70} step={0.5} decimals={1} placeholder="—" />
+              <NumField label="Head circ. (cm)" value={f.birthHc} onChange={(n) => set("birthHc")(n)} min={18} max={50} step={0.5} decimals={1} placeholder="—" />
             </div>
           )}
 
           {!isNeo && (
             <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
               <Stepper label="Age (years)" value={f.gestWeeks} onChange={(n) => set("gestWeeks")(n)} min={0} max={18} />
-              <NumField
-                label="Weight (kg)"
-                value={f.currentWeight / 1000}
-                onChange={(n) => {
-                  const g = Math.round(n * 1000);
-                  setF((p) => ({ ...p, birthWeight: g, currentWeight: g }));
-                }}
-                min={1}
-                max={150}
-                step={0.5}
-                decimals={1}
+              <WeightInput
+                label="Weight"
+                valueGrams={f.currentWeight}
+                onChangeGrams={(g) => setF((p) => ({ ...p, birthWeight: g, currentWeight: g }))}
+                neonatal={false}
               />
+              <NumField label="Height / length (cm)" value={f.birthLength} onChange={(n) => set("birthLength")(n)} min={40} max={200} step={0.5} decimals={1} placeholder="cm" />
+              <NumField label="Head circumference (cm)" value={f.birthHc} onChange={(n) => set("birthHc")(n)} min={25} max={60} step={0.5} decimals={1} placeholder="cm" />
             </div>
           )}
 

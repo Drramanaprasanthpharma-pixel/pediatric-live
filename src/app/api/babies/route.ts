@@ -37,6 +37,8 @@ export async function POST(req: Request) {
       gestDays: int(body.gestDays, 0),
       birthWeight: int(body.birthWeight, 2500),
       currentWeight: int(body.currentWeight ?? body.birthWeight, 2500),
+      birthLength: int(body.birthLength, 0),
+      birthHc: int(body.birthHc, 0),
       deliveryMode: body.deliveryMode ?? "LSCS",
       apgar1: int(body.apgar1, 8),
       apgar5: int(body.apgar5, 9),
